@@ -8,7 +8,14 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp .build/release/ConsoleDeck "$APP/Contents/MacOS/"
 cp Info.plist "$APP/Contents/"
-codesign --force --sign - "$APP"  # ad-hoc: unsigned for distribution, fine on this Mac
+# A stable identity keeps the Accessibility permission across rebuilds; ad-hoc signing
+# changes every build, so macOS would forget it each time.
+IDENTITY="${CODESIGN_IDENTITY:-$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development/ {print $2; exit}')}"
+if [[ -z "$IDENTITY" ]]; then
+  echo "No Apple Development identity: signing ad-hoc (Accessibility permission resets on each build)"
+  IDENTITY=-
+fi
+codesign --force --sign "$IDENTITY" "$APP"
 echo "Built $APP"
 if [[ "${1:-}" == "install" ]]; then
   pkill -x ConsoleDeck || true

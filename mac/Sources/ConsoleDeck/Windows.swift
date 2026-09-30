@@ -76,7 +76,7 @@ struct ActionsView: View {
     @State private var profileID: String?  // nil = Default
     @State private var confirmDelete = false
 
-    private static let kinds = [("none", "None"), ("url", "Open URL"), ("app", "Open App"), ("script", "Run Script")]
+    private static let kinds = [("none", "None"), ("url", "Open URL"), ("app", "Open App"), ("key", "Press Keys"), ("script", "Run Script")]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -104,6 +104,9 @@ struct ActionsView: View {
                         TextField("App", text: value, prompt: Text("Safari"))
                         Button("Choose…") { if let app = pickApp() { value.wrappedValue = app.name } }
                     }
+                case "key":
+                    LabeledContent("Keys") { KeyRecorder(text: value) }
+                    AccessibilityNote()
                 case "script":
                     TextField("Command", text: value, prompt: Text("~/bin/thing.sh"), axis: .vertical)
                         .lineLimit(3...8)
@@ -117,7 +120,9 @@ struct ActionsView: View {
                     Label("Not calibrated yet", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
                 }
                 Spacer()
-                Button("Test") { run(effective(selected)) }.disabled((effective(selected).value ?? "").isEmpty)
+                Button("Test") { run(effective(selected)) }
+                    .disabled((effective(selected).value ?? "").isEmpty || effective(selected).type == "key")
+                    .help(effective(selected).type == "key" ? "Keys go to the app in front; press the deck button in that app to test" : "")
             }
         }
         .padding(20)
@@ -223,6 +228,7 @@ struct ActionsView: View {
 
     private func summary(_ action: Action) -> String {
         guard action.type != "none", let value = action.value, !value.isEmpty else { return "–" }
+        if action.type == "key" { return keyComboSymbols(value) }
         return action.type == "url" ? (URL(string: value)?.host() ?? value) : value
     }
 }
@@ -249,4 +255,49 @@ func pickApp() -> FrontApp? {
     panel.directoryURL = URL(fileURLWithPath: "/Applications")
     guard panel.runModal() == .OK, let url = panel.url, let id = Bundle(url: url)?.bundleIdentifier else { return nil }
     return FrontApp(id: id, name: url.deletingPathExtension().lastPathComponent)
+}
+
+/// Click, then press a key combo; it is stored as text like "cmd+shift+t". Click again to cancel.
+struct KeyRecorder: View {
+    @Binding var text: String
+    @State private var monitor: Any?
+
+    var body: some View {
+        Button(monitor != nil ? "Press keys…" : (text.isEmpty ? "Record" : keyComboSymbols(text))) {
+            monitor == nil ? start() : stop()
+        }
+        .monospaced()
+        .onDisappear(perform: stop)
+    }
+
+    private func start() {
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            text = keyComboText(keyCode: event.keyCode, modifierFlags: event.modifierFlags)
+            stop()
+            return nil  // swallow it so ⌘W etc. don't act on the window
+        }
+    }
+
+    private func stop() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+    }
+}
+
+/// Shown under key actions until macOS grants Accessibility; rechecks every second.
+struct AccessibilityNote: View {
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            if !accessibilityTrusted() {
+                HStack {
+                    Label("Needs Accessibility permission to press keys", systemImage: "lock")
+                        .foregroundStyle(.orange)
+                    Button("Allow…") {
+                        _ = accessibilityTrusted(prompt: true)
+                        openAccessibilitySettings()
+                    }
+                }
+            }
+        }
+    }
 }

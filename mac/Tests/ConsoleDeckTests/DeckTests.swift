@@ -71,3 +71,21 @@ import Testing
     config.setAction(Action(type: "url", value: "y.com"), button: 1, profile: "com.gone")  // deleted profile: no-op
     #expect(config.profiles["com.gone"] == nil)
 }
+
+@Test func keyCombos() {
+    #expect(KeyCombo("space") == KeyCombo("SPACE"))
+    #expect(KeyCombo("space")?.key == 49)
+    #expect(KeyCombo("cmd+shift+t")?.key == 17)
+    #expect(KeyCombo("cmd+shift+t")?.flags == [.maskCommand, .maskShift])
+    #expect(KeyCombo("kc105")?.key == 105)
+    #expect(KeyCombo("hyper+t") == nil)
+    #expect(KeyCombo("") == nil)
+    #expect(keyComboText(keyCode: 17, modifierFlags: [.command, .shift, .capsLock]) == "shift+cmd+t")
+    #expect(keyComboText(keyCode: 49, modifierFlags: []) == "space")
+    #expect(keyComboText(keyCode: 105, modifierFlags: []) == "kc105")
+    #expect(keyComboSymbols("shift+cmd+t") == "⇧⌘T")
+    #expect(keyComboSymbols("space") == "Space")
+    // what gets recorded must parse back to the same key
+    let recorded = keyComboText(keyCode: 36, modifierFlags: [.option])
+    #expect(recorded == "opt+return" && KeyCombo(recorded)?.key == 36 && KeyCombo(recorded)?.flags == .maskAlternate)
+}

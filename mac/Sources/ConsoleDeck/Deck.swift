@@ -100,7 +100,11 @@ func parsePress(_ line: String) -> String? {
 }
 
 func describe(_ action: Action) -> String {
-    action.type == "none" ? "no action" : "\(action.type) \(action.value ?? "")"
+    switch action.type {
+    case "none": "no action"
+    case "key": "key \(keyComboSymbols(action.value ?? ""))"
+    default: "\(action.type) \(action.value ?? "")"
+    }
 }
 
 @MainActor
@@ -110,6 +114,13 @@ func run(_ action: Action) {
     switch action.type {
     case "url":
         if let url = URL(string: value.contains("://") ? value : "https://" + value) { NSWorkspace.shared.open(url) }
+        return
+    case "key":
+        guard let combo = KeyCombo(value) else { return logger.error("Unknown key combo \(value, privacy: .public)") }
+        guard accessibilityTrusted(prompt: true) else {
+            return logger.error("Key \(value, privacy: .public) not sent: ConsoleDeck needs Accessibility permission")
+        }
+        press(combo)
         return
     case "app": args = ["/usr/bin/open", "-a", value]
     case "script": args = ["/bin/bash", "-c", value]
