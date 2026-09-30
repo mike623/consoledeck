@@ -22,7 +22,9 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-CONFIG = HERE / "deck.json"
+# shared with the native app in mac/
+CONFIG = Path.home() / "Library/Application Support/ConsoleDeck/deck.json"
+OLD_CONFIG = HERE / "deck.json"
 BAUD = 115200
 LAYOUT = [[1, 2, 3], [4, 5, 6], [7, 8, 9, 10]]  # 3.3.4, numbered left-top to right-bottom
 POSITIONS = [n for row in LAYOUT for n in row]
@@ -52,6 +54,9 @@ PLIST_XML = """<?xml version="1.0" encoding="UTF-8"?>
 
 
 def load():
+    if not CONFIG.exists() and OLD_CONFIG.exists():  # one-time move from the repo folder
+        CONFIG.parent.mkdir(parents=True, exist_ok=True)
+        OLD_CONFIG.rename(CONFIG)
     try:
         return json.loads(CONFIG.read_text())
     except FileNotFoundError:
@@ -59,6 +64,7 @@ def load():
 
 
 def save(cfg):
+    CONFIG.parent.mkdir(parents=True, exist_ok=True)
     CONFIG.write_text(json.dumps(cfg, indent=2) + "\n")
 
 
