@@ -57,3 +57,17 @@ import Testing
     #expect(frontApp(afterActivating: safari, ownID: own.id, previous: nil) == safari)
     #expect(frontApp(afterActivating: nil, ownID: own.id, previous: safari) == safari)
 }
+
+@Test func editingProfileButtons() {
+    var config = Config(pins: ["D6": 1], buttons: ["1": Action(type: "app", value: "Spotify")],
+                        profiles: ["com.apple.Safari": Profile(name: "Safari")])
+    let safari = "com.apple.Safari"
+    #expect(config.ownAction(button: 1, profile: safari) == nil)  // inherits
+    config.setAction(Action(type: "url", value: "x.com"), button: 1, profile: safari)
+    #expect(config.action(forPin: "D6", app: safari)?.action.value == "x.com")
+    #expect(config.buttons["1"]?.value == "Spotify")  // default untouched
+    config.setAction(nil, button: 1, profile: safari)
+    #expect(config.action(forPin: "D6", app: safari)?.action.value == "Spotify")
+    config.setAction(Action(type: "url", value: "y.com"), button: 1, profile: "com.gone")  // deleted profile: no-op
+    #expect(config.profiles["com.gone"] == nil)
+}

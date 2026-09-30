@@ -64,6 +64,21 @@ struct Config: Codable, Equatable {
         try encoder.encode(self).write(to: Self.url, options: .atomic)
     }
 
+    /// What `profile` (nil = default) itself sets for button n. nil in a profile means "use default".
+    func ownAction(button n: Int, profile: String?) -> Action? {
+        guard let profile else { return buttons[String(n)] }
+        return profiles[profile]?.buttons[String(n)]
+    }
+
+    /// nil removes the button: back to "use default" in a profile, "none" in the default.
+    mutating func setAction(_ action: Action?, button n: Int, profile: String?) {
+        if let profile {
+            profiles[profile]?.buttons[String(n)] = action
+        } else {
+            buttons[String(n)] = action
+        }
+    }
+
     func pin(forButton n: Int) -> String? {
         pins.first { $0.value == n }?.key
     }
