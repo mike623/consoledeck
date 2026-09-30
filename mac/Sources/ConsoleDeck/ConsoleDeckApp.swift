@@ -1,3 +1,4 @@
+import ServiceManagement
 import SwiftUI
 
 @main
@@ -33,6 +34,7 @@ struct MenuContent: View {
         Button("Edit Actions…") { show("actions") }
         Button("Calibrate Buttons…") { show("calibrate") }
         Divider()
+        Toggle("Start at Login", isOn: Binding { deck.startsAtLogin } set: { deck.setStartsAtLogin($0) })
         Button("Show Config in Finder") { NSWorkspace.shared.activateFileViewerSelecting([Config.url]) }
         Button("Quit ConsoleDeck") { NSApp.terminate(nil) }.keyboardShortcut("q")
     }

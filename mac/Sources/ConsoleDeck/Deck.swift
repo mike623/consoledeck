@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import os
+import ServiceManagement
 
 let logger = Logger(subsystem: "com.consoledeck.app", category: "deck")
 
@@ -146,6 +147,18 @@ final class Deck {
     var calibration: [String: Int]?
     var calibrationNote = ""
     var frontApp: FrontApp?
+    var startsAtLogin = SMAppService.mainApp.status == .enabled
+
+    func setStartsAtLogin(_ on: Bool) {
+        do {
+            if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+        } catch {
+            logger.error("Start at login \(on ? "on" : "off", privacy: .public) failed: \(error, privacy: .public)")
+        }
+        let status = SMAppService.mainApp.status
+        if status == .requiresApproval { SMAppService.openSystemSettingsLoginItems() }  // user switched it off there before
+        startsAtLogin = status == .enabled
+    }
 
     var profileName: String {
         frontApp.flatMap { config.profiles[$0.id]?.name } ?? "Default"
