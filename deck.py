@@ -109,17 +109,41 @@ def run_action(action):
         subprocess.Popen(cmd, cwd=Path.home())
 
 
+def log(msg):
+    print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {msg}", flush=True)
+
+
 def run():
-    # ponytail: a serial error just crashes; launchd KeepAlive restarts us (~10s), which is the reconnect
-    with open_port() as ser:
-        print(f"Listening on {ser.port}", flush=True)
-        for pin in presses(ser):
-            cfg = load()  # re-read each press so config edits apply without restarting the service
-            n = cfg["pins"].get(pin)
-            action = cfg["buttons"].get(str(n), {})
-            print(f"{time.strftime('%H:%M:%S')} {pin} -> button {n}: {describe(action)}", flush=True)
-            if n:
-                run_action(action)
+    import serial
+
+    waiting = False  # log "waiting" once per disconnect, not every retry
+    while True:
+        try:
+            ser = open_port()
+        except SystemExit as e:
+            if not waiting:
+                log(f"{str(e).splitlines()[0]} Waiting...")
+                waiting = True
+            time.sleep(3)
+            continue
+        waiting = False
+        log(f"Listening on {ser.port}")
+        try:
+            with ser:
+                for pin in presses(ser):
+                    try:
+                        cfg = load()  # re-read each press so config edits apply without restarting
+                    except json.JSONDecodeError as e:
+                        log(f"{pin} ignored: {CONFIG.name} is not valid JSON ({e})")
+                        continue
+                    n = cfg["pins"].get(pin)
+                    action = cfg["buttons"].get(str(n), {})
+                    log(f"{pin} -> button {n}: {describe(action)}")
+                    if n:
+                        run_action(action)
+        except serial.SerialException as e:
+            log(f"Lost {ser.port} ({e}). Reconnecting...")
+            time.sleep(3)
 
 
 def calibrate():
