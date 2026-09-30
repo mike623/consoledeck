@@ -1,0 +1,33 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: write  # tag builds attach the app to a GitHub Release
+
+jobs:
+  mac:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: mac
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift --version
+      - run: swift test
+      - run: ./build.sh  # no signing identity on CI: signed ad-hoc
+      - name: Zip app
+        run: ditto -c -k --keepParent build/ConsoleDeck.app build/ConsoleDeck.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ConsoleDeck
+          path: mac/build/ConsoleDeck.zip
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" build/ConsoleDeck.zip --generate-notes
