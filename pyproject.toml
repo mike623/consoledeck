@@ -1,0 +1,8 @@
+[project]
+name = "consoledeck"
+version = "0.1.0"
+description = "Terminal ConsoleDeck for macOS: calibrate, assign actions, run as LaunchAgent"
+requires-python = ">=3.12"
+dependencies = [
+    "pyserial>=3.5",
+]

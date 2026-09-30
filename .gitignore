@@ -1,0 +1,4 @@
+.venv/
+__pycache__/
+# personal pin map + actions (may contain private URLs/scripts)
+deck.json
