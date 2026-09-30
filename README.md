@@ -13,3 +13,11 @@ uv run python test_deck.py
 ```
 
 Config lives in `~/Library/Application Support/ConsoleDeck/deck.json`, shared by the app and `deck.py`. Quit the app (or stop the service) before calibrating or uploading firmware; it holds the serial port.
+
+## Install the Mac app
+
+Download `ConsoleDeck.zip` from [Releases](https://github.com/mike623/consoledeck/releases) (or the latest [Build](https://github.com/mike623/consoledeck/actions/workflows/build.yml) run), unzip, and move `ConsoleDeck.app` to Applications. Apple silicon only.
+
+CI builds are not notarized, so macOS blocks the first launch. Either run `xattr -dr com.apple.quarantine /Applications/ConsoleDeck.app`, or try to open it once and then click **Open Anyway** in System Settings → Privacy & Security.
+
+To build it yourself: `mac/build.sh install` (needs Xcode 16+).
