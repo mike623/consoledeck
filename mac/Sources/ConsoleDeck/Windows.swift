@@ -76,7 +76,7 @@ struct ActionsView: View {
     @State private var profileID: String?  // nil = Default
     @State private var confirmDelete = false
 
-    private static let kinds = [("none", "None"), ("url", "Open URL"), ("app", "Open App"), ("key", "Press Keys"), ("script", "Run Script")]
+    private static let kinds = [("none", "None"), ("url", "Open URL"), ("app", "Open App"), ("key", "Press Keys"), ("type", "Type Text"), ("script", "Run Script")]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -107,6 +107,10 @@ struct ActionsView: View {
                 case "key":
                     LabeledContent("Keys") { KeyRecorder(text: value) }
                     AccessibilityNote()
+                case "type":
+                    TextField("Text", text: value, prompt: Text("Typed into the app in front"), axis: .vertical)
+                        .lineLimit(2...8)
+                    AccessibilityNote()
                 case "script":
                     TextField("Command", text: value, prompt: Text("~/bin/thing.sh"), axis: .vertical)
                         .lineLimit(3...8)
@@ -121,8 +125,8 @@ struct ActionsView: View {
                 }
                 Spacer()
                 Button("Test") { run(effective(selected)) }
-                    .disabled((effective(selected).value ?? "").isEmpty || effective(selected).type == "key")
-                    .help(effective(selected).type == "key" ? "Keys go to the app in front; press the deck button in that app to test" : "")
+                    .disabled((effective(selected).value ?? "").isEmpty || typesIntoFrontApp)
+                    .help(typesIntoFrontApp ? "Goes to the app in front; press the deck button in that app to test" : "")
             }
         }
         .padding(20)
@@ -185,6 +189,9 @@ struct ActionsView: View {
         own(n) ?? deck.config.buttons[String(n)] ?? Action(type: "none")
     }
 
+    /// Key and Type actions would land in this window, so Test is off for them.
+    private var typesIntoFrontApp: Bool { ["key", "type"].contains(effective(selected).type) }
+
     private func setOwn(_ action: Action?) {
         deck.config.setAction(action, button: selected, profile: profile)
         deck.save()  // every edit is saved straight away, like deck.py
@@ -229,6 +236,7 @@ struct ActionsView: View {
     private func summary(_ action: Action) -> String {
         guard action.type != "none", let value = action.value, !value.isEmpty else { return "–" }
         if action.type == "key" { return keyComboSymbols(value) }
+        if action.type == "type" { return "“\(value)”" }
         return action.type == "url" ? (URL(string: value)?.host() ?? value) : value
     }
 }

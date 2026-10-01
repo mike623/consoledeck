@@ -104,6 +104,7 @@ func describe(_ action: Action) -> String {
     switch action.type {
     case "none": "no action"
     case "key": "key \(keyComboSymbols(action.value ?? ""))"
+    case "type": "type \"\((action.value ?? "").prefix(30))\""
     default: "\(action.type) \(action.value ?? "")"
     }
 }
@@ -122,6 +123,12 @@ func run(_ action: Action) {
             return logger.error("Key \(value, privacy: .public) not sent: ConsoleDeck needs Accessibility permission")
         }
         press(combo)
+        return
+    case "type":
+        guard accessibilityTrusted(prompt: true) else {
+            return logger.error("Text not typed: ConsoleDeck needs Accessibility permission")
+        }
+        type(value)
         return
     case "app": args = ["/usr/bin/open", "-a", value]
     case "script": args = ["/bin/bash", "-c", value]

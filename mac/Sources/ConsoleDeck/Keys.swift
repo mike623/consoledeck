@@ -85,3 +85,51 @@ func accessibilityTrusted(prompt: Bool = false) -> Bool {
 func openAccessibilitySettings() {
     NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
 }
+
+enum TypingStep: Equatable {
+    case text([UniChar])
+    case returnKey
+}
+
+/// Splits text into events macOS will accept: at most 20 UTF-16 units per event (longer strings
+/// are cut off), and newlines as real Return presses since many apps ignore a typed "\n".
+func typingSteps(_ text: String) -> [TypingStep] {
+    var steps: [TypingStep] = []
+    for (i, line) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
+        if i > 0 { steps.append(.returnKey) }
+        var chunk: [UniChar] = []
+        for ch in line {  // whole characters, so emoji and accents aren't split across events
+            let units = Array(String(ch).utf16)
+            if chunk.count + units.count > 20 {
+                steps.append(.text(chunk))
+                chunk = []
+            }
+            chunk += units
+        }
+        if !chunk.isEmpty { steps.append(.text(chunk)) }
+    }
+    return steps
+}
+
+/// Types text into the app in front, as if from a keyboard. Needs Accessibility permission.
+func type(_ text: String) {
+    let steps = typingSteps(text)
+    DispatchQueue.global(qos: .userInitiated).async {
+        let source = CGEventSource(stateID: .hidSystemState)
+        for step in steps {
+            for down in [true, false] {
+                let event: CGEvent?
+                switch step {
+                case .text(var units):
+                    event = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: down)
+                    event?.keyboardSetUnicodeString(stringLength: units.count, unicodeString: &units)
+                case .returnKey:
+                    event = CGEvent(keyboardEventSource: source, virtualKey: keyCodes["return"]!, keyDown: down)
+                }
+                event?.flags = []  // a held modifier must not turn "a" into ⌘A
+                event?.post(tap: .cghidEventTap)
+            }
+            usleep(5_000)  // some apps drop events that arrive in one burst
+        }
+    }
+}

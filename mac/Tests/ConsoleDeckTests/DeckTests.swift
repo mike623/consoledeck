@@ -89,3 +89,14 @@ import Testing
     let recorded = keyComboText(keyCode: 36, modifierFlags: [.option])
     #expect(recorded == "opt+return" && KeyCombo(recorded)?.key == 36 && KeyCombo(recorded)?.flags == .maskAlternate)
 }
+
+@Test func typingSplitsLongTextAndNewlines() {
+    #expect(typingSteps("hi") == [.text(Array("hi".utf16))])
+    #expect(typingSteps("a\nb") == [.text([97]), .returnKey, .text([98])])
+    #expect(typingSteps("\n") == [.returnKey])
+    let long = String(repeating: "x", count: 45)
+    #expect(typingSteps(long).map { if case .text(let u) = $0 { u.count } else { -1 } } == [20, 20, 5])
+    // a 2-unit emoji at the boundary moves to the next event instead of being split
+    let steps = typingSteps(String(repeating: "x", count: 19) + "😀")
+    #expect(steps.count == 2 && steps[1] == .text(Array("😀".utf16)))
+}
