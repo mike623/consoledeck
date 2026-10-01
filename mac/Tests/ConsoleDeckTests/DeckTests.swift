@@ -2,12 +2,12 @@ import Foundation
 import Testing
 @testable import ConsoleDeck
 
-@Test func parsesPresses() {
-    #expect(parsePress("D7 PRESSED\r\n") == "D7")
-    #expect(parsePress("A0 PRESSED") == "A0")
-    #expect(parsePress("D7 released") == nil)
-    #expect(parsePress("PONG consoledeck") == nil)
-    #expect(parsePress("D13 is LOW at boot (held, shorted to GND, or encoder resting)") == nil)
+@Test func parsesButtonEvents() {
+    #expect(parseButton("D7 PRESSED\r\n")! == ("D7", true))
+    #expect(parseButton("A0 PRESSED")! == ("A0", true))
+    #expect(parseButton("D7 released")! == ("D7", false))
+    #expect(parseButton("PONG consoledeck") == nil)
+    #expect(parseButton("D13 is LOW at boot (held, shorted to GND, or encoder resting)") == nil)
 }
 
 @Test func readsDeckPyConfig() throws {
@@ -99,4 +99,76 @@ import Testing
     // a 2-unit emoji at the boundary moves to the next event instead of being split
     let steps = typingSteps(String(repeating: "x", count: 19) + "😀")
     #expect(steps.count == 2 && steps[1] == .text(Array("😀".utf16)))
+}
+
+@Test func gestureKeysInheritLikePresses() {
+    var config = Config(pins: ["D6": 1], buttons: ["1": Action(type: "app", value: "Spotify"),
+                                                   "1.long": Action(type: "app", value: "Music")],
+                        profiles: ["com.apple.Safari": Profile(name: "Safari")])
+    #expect(config.action(button: 1, gesture: .long, app: "com.apple.Safari").action.value == "Music")
+    config.setAction(Action(type: "none"), button: 1, gesture: .long, profile: "com.apple.Safari")
+    #expect(config.action(button: 1, gesture: .long, app: "com.apple.Safari").action.type == "none")
+    #expect(config.action(button: 1, gesture: .press, app: "com.apple.Safari").action.value == "Spotify")
+    #expect(config.action(button: 1, gesture: .double, app: nil).action.type == "none")
+}
+
+/// Manual clock so gesture timing is tested without sleeping.
+@MainActor final class FakeClock {
+    var now = 0.0
+    var timers: [(at: Double, fn: @MainActor () -> Void, live: Bool)] = []
+
+    func schedule(_ delay: TimeInterval, _ fn: @escaping @MainActor () -> Void) -> () -> Void {
+        let id = timers.count
+        timers.append((now + delay, fn, true))
+        return { self.timers[id].live = false }
+    }
+
+    func advance(_ seconds: Double) {
+        now += seconds
+        for i in timers.indices where timers[i].live && timers[i].at <= now {
+            timers[i].live = false
+            timers[i].fn()
+        }
+    }
+}
+
+@MainActor @Test func gestures() {
+    let clock = FakeClock()
+    var fired: [Gesture] = []
+    let g = GestureDetector(schedule: clock.schedule) { _, gesture in fired.append(gesture) }
+
+    // no long/double actions: fires on the way down, no waiting
+    g.down(1, uses: []); #expect(fired == [.press]); g.up(1)
+    clock.advance(1); #expect(fired == [.press])
+
+    // long press: fires while still held; release does nothing more
+    fired = []
+    g.down(1, uses: [.long]); clock.advance(0.6); #expect(fired == [.long])
+    g.up(1); clock.advance(1); #expect(fired == [.long])
+
+    // short tap on a button with a long action: press on release
+    fired = []
+    g.down(1, uses: [.long]); clock.advance(0.2); g.up(1); #expect(fired == [.press])
+    clock.advance(1); #expect(fired == [.press])
+
+    // double press: second down within the gap
+    fired = []
+    g.down(1, uses: [.double]); g.up(1); clock.advance(0.1)
+    g.down(1, uses: [.double]); #expect(fired == [.double])
+    g.up(1); clock.advance(1); #expect(fired == [.double])
+
+    // single tap on a button with a double action: press after the gap
+    fired = []
+    g.down(1, uses: [.double, .long]); g.up(1); #expect(fired == [])
+    clock.advance(0.4); #expect(fired == [.press])
+
+    // buttons are independent
+    fired = []
+    g.down(1, uses: [.long]); g.down(2, uses: []); #expect(fired == [.press])
+    clock.advance(0.6); #expect(fired == [.press, .long])
+    g.up(1); g.up(2)
+
+    // release we never saw the press for (port opened mid-hold) is ignored
+    fired = []
+    g.up(3); clock.advance(1); #expect(fired == [])
 }

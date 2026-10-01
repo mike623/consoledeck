@@ -74,6 +74,7 @@ struct ActionsView: View {
     @Bindable var deck: Deck
     @State private var selected = 1
     @State private var profileID: String?  // nil = Default
+    @State private var gesture = Gesture.press
     @State private var confirmDelete = false
 
     private static let kinds = [("none", "None"), ("url", "Open URL"), ("app", "Open App"), ("key", "Press Keys"), ("type", "Type Text"), ("script", "Run Script")]
@@ -81,6 +82,11 @@ struct ActionsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             profileBar
+            Picker("Gesture", selection: $gesture) {
+                ForEach(Gesture.allCases, id: \.self) { Text($0.label) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
             DeckGrid(
                 label: { summary(effective($0)) },
                 highlight: { n in n == selected ? .accentColor.opacity(0.6) : .secondary.opacity(0.15) },
@@ -90,13 +96,13 @@ struct ActionsView: View {
             .frame(maxWidth: .infinity)
             Divider()
             Form {
-                Picker("Button \(selected) does", selection: kind) {
+                Picker(gesture == .press ? "Button \(selected) does" : "\(gesture.label) \(selected) does", selection: kind) {
                     if profile != nil { Text("Use Default").tag("inherit") }
                     ForEach(Self.kinds, id: \.0) { Text($0.1).tag($0.0) }
                 }
                 switch kind.wrappedValue {
                 case "inherit":
-                    LabeledContent("Default", value: describe(deck.config.buttons[String(selected)] ?? Action(type: "none")))
+                    LabeledContent("Default", value: describe(deck.config.buttons[gesture.key(selected)] ?? Action(type: "none")))
                 case "url":
                     TextField("URL", text: value, prompt: Text("https://example.com"))
                 case "app":
@@ -122,6 +128,10 @@ struct ActionsView: View {
             HStack {
                 if deck.config.pin(forButton: selected) == nil {
                     Label("Not calibrated yet", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+                }
+                if gesture != .press {
+                    Text("Buttons with long or double actions wait a moment to tell presses apart.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Button("Test") { run(effective(selected)) }
@@ -182,18 +192,18 @@ struct ActionsView: View {
         profile.flatMap { deck.config.profiles[$0]?.name } ?? "Default"
     }
 
-    private func own(_ n: Int) -> Action? { deck.config.ownAction(button: n, profile: profile) }
+    private func own(_ n: Int) -> Action? { deck.config.ownAction(button: n, gesture: gesture, profile: profile) }
 
     /// What pressing button n does while this profile is active.
     private func effective(_ n: Int) -> Action {
-        own(n) ?? deck.config.buttons[String(n)] ?? Action(type: "none")
+        own(n) ?? deck.config.buttons[gesture.key(n)] ?? Action(type: "none")
     }
 
     /// Key and Type actions would land in this window, so Test is off for them.
     private var typesIntoFrontApp: Bool { ["key", "type"].contains(effective(selected).type) }
 
     private func setOwn(_ action: Action?) {
-        deck.config.setAction(action, button: selected, profile: profile)
+        deck.config.setAction(action, button: selected, gesture: gesture, profile: profile)
         deck.save()  // every edit is saved straight away, like deck.py
     }
 

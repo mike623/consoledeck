@@ -36,6 +36,9 @@ struct Config: Codable, Equatable {
     var pins: [String: Int] = [:]
     var buttons: [String: Action] = [:]  // the default profile; deck.py only knows this one
     var profiles: [String: Profile] = [:]  // keyed by bundle ID
+    // Gesture timing knobs; no UI, edit deck.json if presses feel too fast or slow.
+    var longPressMs: Int?
+    var doublePressMs: Int?
 
     init(pins: [String: Int] = [:], buttons: [String: Action] = [:], profiles: [String: Profile] = [:]) {
         self.pins = pins
@@ -49,6 +52,8 @@ struct Config: Codable, Equatable {
         pins = try c.decodeIfPresent([String: Int].self, forKey: .pins) ?? [:]
         buttons = try c.decodeIfPresent([String: Action].self, forKey: .buttons) ?? [:]
         profiles = try c.decodeIfPresent([String: Profile].self, forKey: .profiles) ?? [:]
+        longPressMs = try c.decodeIfPresent(Int.self, forKey: .longPressMs)
+        doublePressMs = try c.decodeIfPresent(Int.self, forKey: .doublePressMs)
     }
 
     static let url = FileManager.default.homeDirectoryForCurrentUser
@@ -66,17 +71,17 @@ struct Config: Codable, Equatable {
     }
 
     /// What `profile` (nil = default) itself sets for button n. nil in a profile means "use default".
-    func ownAction(button n: Int, profile: String?) -> Action? {
-        guard let profile else { return buttons[String(n)] }
-        return profiles[profile]?.buttons[String(n)]
+    func ownAction(button n: Int, gesture: Gesture = .press, profile: String?) -> Action? {
+        guard let profile else { return buttons[gesture.key(n)] }
+        return profiles[profile]?.buttons[gesture.key(n)]
     }
 
     /// nil removes the button: back to "use default" in a profile, "none" in the default.
-    mutating func setAction(_ action: Action?, button n: Int, profile: String?) {
+    mutating func setAction(_ action: Action?, button n: Int, gesture: Gesture = .press, profile: String?) {
         if let profile {
-            profiles[profile]?.buttons[String(n)] = action
+            profiles[profile]?.buttons[gesture.key(n)] = action
         } else {
-            buttons[String(n)] = action
+            buttons[gesture.key(n)] = action
         }
     }
 
@@ -87,17 +92,22 @@ struct Config: Codable, Equatable {
     /// Front app's profile first, then the default buttons. `profile` is nil when the default was used.
     func action(forPin pin: String, app: String? = nil) -> (button: Int, action: Action, profile: String?)? {
         guard let n = pins[pin] else { return nil }
-        if let app, let profile = profiles[app], let action = profile.buttons[String(n)] {
-            return (n, action, profile.name)
+        let (action, profile) = action(button: n, gesture: .press, app: app)
+        return (n, action, profile)
+    }
+
+    func action(button n: Int, gesture: Gesture, app: String?) -> (action: Action, profile: String?) {
+        if let app, let profile = profiles[app], let action = profile.buttons[gesture.key(n)] {
+            return (action, profile.name)
         }
-        return (n, buttons[String(n)] ?? Action(type: "none"), nil)
+        return (buttons[gesture.key(n)] ?? Action(type: "none"), nil)
     }
 }
 
-/// "D7 PRESSED" -> "D7"; anything else (released, boot messages, PONG) -> nil.
-func parsePress(_ line: String) -> String? {
+/// "D7 PRESSED" -> ("D7", true), "D7 released" -> ("D7", false); boot messages, PONG -> nil.
+func parseButton(_ line: String) -> (pin: String, down: Bool)? {
     let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-    return trimmed.wholeMatch(of: /([DA]\d+) PRESSED/).map { String($0.1) }
+    return trimmed.wholeMatch(of: /([DA]\d+) (PRESSED|released)/).map { (String($0.1), $0.2 == "PRESSED") }
 }
 
 func describe(_ action: Action) -> String {
@@ -155,6 +165,7 @@ final class Deck {
     var calibrationNote = ""
     var frontApp: FrontApp?
     var startsAtLogin = SMAppService.mainApp.status == .enabled
+    @ObservationIgnored private var gestures: GestureDetector!
 
     func setStartsAtLogin(_ on: Bool) {
         do {
@@ -173,6 +184,7 @@ final class Deck {
 
     init() {
         reload()
+        gestures = GestureDetector { [weak self] n, gesture in self?.fire(n, gesture) }
         let own = Bundle.main.bundleIdentifier
         let current = NSWorkspace.shared.frontmostApplication
         frontApp = ConsoleDeck.frontApp(afterActivating: current.flatMap(FrontApp.init), ownID: own, previous: nil)
@@ -250,7 +262,7 @@ final class Deck {
                 waiting = false
                 report("Listening on \(path)")
                 try port.readLines { line in
-                    if let pin = parsePress(line) { Task { @MainActor in self.pressed(pin) } }
+                    if let (pin, down) = parseButton(line) { Task { @MainActor in self.buttonEvent(pin, down: down) } }
                 }
             } catch {
                 if !waiting { report("\(error)") }
@@ -265,16 +277,29 @@ final class Deck {
         Task { @MainActor in self.status = msg }
     }
 
-    private func pressed(_ pin: String) {
-        if calibration != nil { return calibrate(pin) }
-        reload()  // re-read each press so deck.py or hand edits apply immediately
-        guard let (n, action, profile) = config.action(forPin: pin, app: frontApp?.id) else {
-            lastPress = "\(pin): not calibrated"
+    private func buttonEvent(_ pin: String, down: Bool) {
+        if calibration != nil {
+            if down { calibrate(pin) }
             return
         }
-        let summary = "button \(n) → \(profile.map { "\($0): " } ?? "")\(describe(action))"
+        if down { reload() }  // re-read each press so deck.py or hand edits apply immediately
+        guard let n = config.pins[pin] else {
+            if down { lastPress = "\(pin): not calibrated" }
+            return
+        }
+        guard down else { return gestures.up(n) }
+        gestures.longPress = Double(config.longPressMs ?? 500) / 1000
+        gestures.doubleGap = Double(config.doublePressMs ?? 300) / 1000
+        let uses = Set([Gesture.long, .double].filter { config.action(button: n, gesture: $0, app: frontApp?.id).action.type != "none" })
+        gestures.down(n, uses: uses)
+    }
+
+    private func fire(_ n: Int, _ gesture: Gesture) {
+        let (action, profile) = config.action(button: n, gesture: gesture, app: frontApp?.id)
+        let what = gesture == .press ? "" : " \(gesture.label.lowercased())"
+        let summary = "button \(n)\(what) → \(profile.map { "\($0): " } ?? "")\(describe(action))"
         lastPress = "Last: " + summary
-        logger.notice("\(pin, privacy: .public) -> \(summary, privacy: .public)")
+        logger.notice("\(summary, privacy: .public)")
         run(action)
     }
 }
