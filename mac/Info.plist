@@ -9,4 +9,5 @@
   <key>CFBundleVersion</key><string>1</string>
   <key>LSMinimumSystemVersion</key><string>15.0</string>
   <key>LSUIElement</key><true/>
+  <key>NSAppleEventsUsageDescription</key><string>ConsoleDeck asks macOS to log out, restart or shut down when you press a deck button set to do that.</string>
 </dict></plist>

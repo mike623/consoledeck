@@ -115,6 +115,7 @@ func describe(_ action: Action) -> String {
     case "none": "no action"
     case "key": "key \(keyComboSymbols(action.value ?? ""))"
     case "type": "type \"\((action.value ?? "").prefix(30))\""
+    case "system": systemActions.first { $0.id == action.value }?.label ?? "system \(action.value ?? "")"
     default: "\(action.type) \(action.value ?? "")"
     }
 }
@@ -140,6 +141,15 @@ func run(_ action: Action) {
         }
         type(value)
         return
+    case "system" where value == "lock":
+        guard accessibilityTrusted(prompt: true) else {
+            return logger.error("Lock not sent: ConsoleDeck needs Accessibility permission")
+        }
+        press(KeyCombo("ctrl+cmd+q")!)  // macOS's own Lock Screen shortcut
+        return
+    case "system":
+        guard let command = systemCommand(value) else { return logger.error("Unknown system action \(value, privacy: .public)") }
+        args = command
     case "app": args = ["/usr/bin/open", "-a", value]
     case "script": args = ["/bin/bash", "-c", value]
     default: return

@@ -172,3 +172,12 @@ import Testing
     fired = []
     g.up(3); clock.advance(1); #expect(fired == [])
 }
+
+@Test func systemActionsAllRunnable() {
+    for (id, _) in systemActions where id != "lock" {  // lock is a key press, not a command
+        #expect(systemCommand(id) != nil, "no command for \(id)")
+    }
+    #expect(KeyCombo("ctrl+cmd+q") != nil)
+    #expect(systemCommand("lock") == nil && systemCommand("selfdestruct") == nil)
+    #expect(describe(Action(type: "system", value: "restart")) == "Restart…")
+}

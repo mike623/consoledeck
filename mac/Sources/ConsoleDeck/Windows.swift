@@ -77,7 +77,7 @@ struct ActionsView: View {
     @State private var gesture = Gesture.press
     @State private var confirmDelete = false
 
-    private static let kinds = [("none", "None"), ("url", "Open URL"), ("app", "Open App"), ("key", "Press Keys"), ("type", "Type Text"), ("script", "Run Script")]
+    private static let kinds = [("none", "None"), ("url", "Open URL"), ("app", "Open App"), ("key", "Press Keys"), ("type", "Type Text"), ("system", "System"), ("script", "Run Script")]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -117,6 +117,12 @@ struct ActionsView: View {
                     TextField("Text", text: value, prompt: Text("Typed into the app in front"), axis: .vertical)
                         .lineLimit(2...8)
                     AccessibilityNote()
+                case "system":
+                    Picker("Action", selection: value) {
+                        if value.wrappedValue.isEmpty { Text("Choose…").tag("") }
+                        ForEach(systemActions, id: \.id) { Text($0.label).tag($0.id) }
+                    }
+                    if value.wrappedValue == "lock" { AccessibilityNote() }
                 case "script":
                     TextField("Command", text: value, prompt: Text("~/bin/thing.sh"), axis: .vertical)
                         .lineLimit(3...8)
@@ -247,6 +253,7 @@ struct ActionsView: View {
         guard action.type != "none", let value = action.value, !value.isEmpty else { return "–" }
         if action.type == "key" { return keyComboSymbols(value) }
         if action.type == "type" { return "“\(value)”" }
+        if action.type == "system" { return describe(action) }
         return action.type == "url" ? (URL(string: value)?.host() ?? value) : value
     }
 }
