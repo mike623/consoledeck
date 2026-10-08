@@ -77,7 +77,7 @@ struct ActionsView: View {
     @State private var gesture = Gesture.press
     @State private var confirmDelete = false
 
-    private static let kinds = [("none", "None"), ("url", "Open URL"), ("app", "Open App"), ("key", "Press Keys"), ("type", "Type Text"), ("system", "System"), ("script", "Run Script")]
+    private static let kinds = [("none", "None"), ("url", "Open URL"), ("app", "Open App"), ("key", "Press Keys"), ("type", "Type Text"), ("system", "System"), ("input", "Input Language"), ("script", "Run Script")]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -123,6 +123,15 @@ struct ActionsView: View {
                         ForEach(systemActions, id: \.id) { Text($0.label).tag($0.id) }
                     }
                     if value.wrappedValue == "lock" { AccessibilityNote() }
+                case "input":
+                    Picker("Language", selection: value) {
+                        let choices = inputSourceChoices()
+                        if value.wrappedValue.isEmpty { Text("Choose…").tag("") }
+                        else if !choices.contains(where: { $0.id == value.wrappedValue }) {
+                            Text("\(value.wrappedValue) (not enabled)").tag(value.wrappedValue)
+                        }
+                        ForEach(choices, id: \.id) { Text($0.name).tag($0.id) }
+                    }
                 case "script":
                     TextField("Command", text: value, prompt: Text("~/bin/thing.sh"), axis: .vertical)
                         .lineLimit(3...8)
@@ -253,7 +262,7 @@ struct ActionsView: View {
         guard action.type != "none", let value = action.value, !value.isEmpty else { return "–" }
         if action.type == "key" { return keyComboSymbols(value) }
         if action.type == "type" { return "“\(value)”" }
-        if action.type == "system" { return describe(action) }
+        if ["system", "input"].contains(action.type) { return describe(action) }
         return action.type == "url" ? (URL(string: value)?.host() ?? value) : value
     }
 }

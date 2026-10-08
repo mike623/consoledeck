@@ -115,6 +115,7 @@ func describe(_ action: Action) -> String {
     case "none": "no action"
     case "key": "key \(keyComboSymbols(action.value ?? ""))"
     case "type": "type \"\((action.value ?? "").prefix(30))\""
+    case "input": inputSourceName(action.value ?? "")
     case "system": systemActions.first { $0.id == action.value }?.label ?? "system \(action.value ?? "")"
     default: "\(action.type) \(action.value ?? "")"
     }
@@ -146,6 +147,9 @@ func run(_ action: Action) {
             return logger.error("Lock not sent: ConsoleDeck needs Accessibility permission")
         }
         press(KeyCombo("ctrl+cmd+q")!)  // macOS's own Lock Screen shortcut
+        return
+    case "input":
+        selectInputSource(value)
         return
     case "system" where value == "inputsource":
         selectNextInputSource()

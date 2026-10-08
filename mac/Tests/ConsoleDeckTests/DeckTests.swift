@@ -180,5 +180,7 @@ import Testing
     #expect(KeyCombo("ctrl+cmd+q") != nil)
     #expect(systemCommand("lock") == nil && systemCommand("selfdestruct") == nil)
     #expect(describe(Action(type: "system", value: "restart")) == "Restart…")
-    #expect(!enabledInputSources().isEmpty)
+    let first = inputSourceChoices()[0]
+    #expect(!first.name.isEmpty && describe(Action(type: "input", value: first.id)) == first.name)
+    #expect(describe(Action(type: "input", value: "com.example.gone")) == "com.example.gone")
 }

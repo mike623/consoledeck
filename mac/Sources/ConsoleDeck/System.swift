@@ -42,9 +42,27 @@ func enabledInputSources() -> [TISInputSource] {
     return TISCreateInputSourceList(filter, false)?.takeRetainedValue() as? [TISInputSource] ?? []
 }
 
-func inputSourceID(_ source: TISInputSource) -> String {
-    guard let ptr = TISGetInputSourceProperty(source, kTISPropertyInputSourceID) else { return "" }
+func inputSourceProperty(_ source: TISInputSource, _ key: CFString) -> String {
+    guard let ptr = TISGetInputSourceProperty(source, key) else { return "" }
     return Unmanaged<CFString>.fromOpaque(ptr).takeUnretainedValue() as String
+}
+
+func inputSourceID(_ source: TISInputSource) -> String { inputSourceProperty(source, kTISPropertyInputSourceID) }
+
+/// Enabled input sources as (id, name), for the editor picker. id is stored, e.g. "com.apple.keylayout.British".
+func inputSourceChoices() -> [(id: String, name: String)] {
+    enabledInputSources().map { (inputSourceID($0), inputSourceProperty($0, kTISPropertyLocalizedName)) }
+}
+
+func inputSourceName(_ id: String) -> String { inputSourceChoices().first { $0.id == id }?.name ?? id }
+
+/// Switch to one specific input source by id.
+func selectInputSource(_ id: String) {
+    guard let source = enabledInputSources().first(where: { inputSourceID($0) == id }) else {
+        return logger.error("Input source \(id, privacy: .public) not enabled")
+    }
+    let status = TISSelectInputSource(source)
+    if status != noErr { logger.error("Input source switch failed: \(status)") }
 }
 
 /// Switch to the input source after the current one, wrapping around (like ⌃Space).
