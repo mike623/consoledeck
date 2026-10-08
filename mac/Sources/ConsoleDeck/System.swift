@@ -1,3 +1,4 @@
+import Carbon
 import Foundation
 
 /// System actions: stored value, menu label. Order is the order shown in the editor.
@@ -6,6 +7,7 @@ let systemActions: [(id: String, label: String)] = [
     ("sleep", "Sleep"),
     ("displaysleep", "Turn Display Off"),
     ("screensaver", "Start Screen Saver"),
+    ("inputsource", "Next Input Language"),
     ("mute", "Mute / Unmute"),
     ("volumeup", "Volume Up"),
     ("volumedown", "Volume Down"),
@@ -14,7 +16,7 @@ let systemActions: [(id: String, label: String)] = [
     ("shutdown", "Shut Down…"),
 ]
 
-/// Command for a system action, or nil for "lock" (a key press) and unknown ids.
+/// Command for a system action, or nil for in-process ones ("lock", "inputsource") and unknown ids.
 /// Log out / restart / shut down go through loginwindow, which shows macOS's own
 /// "Are you sure?" dialog, so a stray press can't lose work.
 func systemCommand(_ id: String) -> [String]? {
@@ -31,4 +33,27 @@ func systemCommand(_ id: String) -> [String]? {
     case "shutdown": osa("tell application \"loginwindow\" to «event aevtrsdn»")
     default: nil
     }
+}
+
+/// Keyboard layouts / input methods enabled in System Settings › Keyboard › Input Sources.
+func enabledInputSources() -> [TISInputSource] {
+    let filter = [kTISPropertyInputSourceIsSelectCapable: true,
+                  kTISPropertyInputSourceCategory: kTISCategoryKeyboardInputSource!] as CFDictionary
+    return TISCreateInputSourceList(filter, false)?.takeRetainedValue() as? [TISInputSource] ?? []
+}
+
+func inputSourceID(_ source: TISInputSource) -> String {
+    guard let ptr = TISGetInputSourceProperty(source, kTISPropertyInputSourceID) else { return "" }
+    return Unmanaged<CFString>.fromOpaque(ptr).takeUnretainedValue() as String
+}
+
+/// Switch to the input source after the current one, wrapping around (like ⌃Space).
+func selectNextInputSource() {
+    let sources = enabledInputSources()
+    guard sources.count > 1 else { return logger.error("Only one input source enabled") }
+    let current = inputSourceID(TISCopyCurrentKeyboardInputSource().takeRetainedValue())
+    let i = sources.firstIndex { inputSourceID($0) == current } ?? -1
+    let next = sources[(i + 1) % sources.count]
+    let status = TISSelectInputSource(next)
+    if status != noErr { logger.error("Input source switch failed: \(status)") }
 }

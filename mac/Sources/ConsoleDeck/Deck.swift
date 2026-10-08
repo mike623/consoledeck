@@ -147,6 +147,9 @@ func run(_ action: Action) {
         }
         press(KeyCombo("ctrl+cmd+q")!)  // macOS's own Lock Screen shortcut
         return
+    case "system" where value == "inputsource":
+        selectNextInputSource()
+        return
     case "system":
         guard let command = systemCommand(value) else { return logger.error("Unknown system action \(value, privacy: .public)") }
         args = command
