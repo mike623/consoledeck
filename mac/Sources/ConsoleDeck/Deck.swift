@@ -39,6 +39,7 @@ struct Config: Codable, Equatable {
     // Gesture timing knobs; no UI, edit deck.json if presses feel too fast or slow.
     var longPressMs: Int?
     var doublePressMs: Int?
+    var repeatSeconds: Int?  // how often a "repeat" action presses its keys
 
     init(pins: [String: Int] = [:], buttons: [String: Action] = [:], profiles: [String: Profile] = [:]) {
         self.pins = pins
@@ -54,6 +55,7 @@ struct Config: Codable, Equatable {
         profiles = try c.decodeIfPresent([String: Profile].self, forKey: .profiles) ?? [:]
         longPressMs = try c.decodeIfPresent(Int.self, forKey: .longPressMs)
         doublePressMs = try c.decodeIfPresent(Int.self, forKey: .doublePressMs)
+        repeatSeconds = try c.decodeIfPresent(Int.self, forKey: .repeatSeconds)
     }
 
     static let url = FileManager.default.homeDirectoryForCurrentUser
@@ -114,6 +116,7 @@ func describe(_ action: Action) -> String {
     switch action.type {
     case "none": "no action"
     case "key": "key \(keyComboSymbols(action.value ?? ""))"
+    case "repeat": "repeat \(keyComboSymbols(action.value ?? ""))"
     case "type": "type \"\((action.value ?? "").prefix(30))\""
     case "input": inputSourceName(action.value ?? "")
     case "system": systemActions.first { $0.id == action.value }?.label ?? "system \(action.value ?? "")"
@@ -182,6 +185,9 @@ final class Deck {
     var calibrationNote = ""
     var frontApp: FrontApp?
     var startsAtLogin = SMAppService.mainApp.status == .enabled
+    /// Key combo a "repeat" action is auto-pressing (keeps idle-kicking streams like Boosteroid alive).
+    var repeating: String?
+    @ObservationIgnored private var repeatTimer: Timer?
     @ObservationIgnored private var gestures: GestureDetector!
 
     func setStartsAtLogin(_ on: Bool) {
@@ -317,7 +323,24 @@ final class Deck {
         let summary = "button \(n)\(what) → \(profile.map { "\($0): " } ?? "")\(describe(action))"
         lastPress = "Last: " + summary
         logger.notice("\(summary, privacy: .public)")
+        if action.type == "repeat" { return toggleRepeat(action.value ?? "") }
         run(action)
+    }
+
+    /// Same combo again stops it; a different repeat button switches to its combo.
+    func toggleRepeat(_ combo: String) {
+        repeatTimer?.invalidate()
+        repeatTimer = nil
+        guard repeating != combo else { repeating = nil; return }
+        repeating = nil
+        guard let key = KeyCombo(combo) else { return logger.error("Unknown key combo \(combo, privacy: .public)") }
+        guard accessibilityTrusted(prompt: true) else {
+            return logger.error("Repeat not started: ConsoleDeck needs Accessibility permission")
+        }
+        repeating = combo
+        press(key)
+        let every = Double(max(config.repeatSeconds ?? 60, 1))
+        repeatTimer = Timer.scheduledTimer(withTimeInterval: every, repeats: true) { _ in press(key) }
     }
 }
 

@@ -30,6 +30,9 @@ struct MenuContent: View {
         Text(deck.status)
         Text("Profile: \(deck.profileName)" + (deck.frontApp.map { "  (\($0.name) in front)" } ?? ""))
         if !deck.lastPress.isEmpty { Text(deck.lastPress) }
+        if let combo = deck.repeating {
+            Button("Stop Repeating \(keyComboSymbols(combo))") { deck.toggleRepeat(combo) }
+        }
         Divider()
         Button("Edit Actions…") { show("actions") }
         Button("Calibrate Buttons…") { show("calibrate") }

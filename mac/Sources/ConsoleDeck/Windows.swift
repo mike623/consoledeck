@@ -77,7 +77,7 @@ struct ActionsView: View {
     @State private var gesture = Gesture.press
     @State private var confirmDelete = false
 
-    private static let kinds = [("none", "None"), ("url", "Open URL"), ("app", "Open App"), ("key", "Press Keys"), ("type", "Type Text"), ("system", "System"), ("input", "Input Language"), ("script", "Run Script")]
+    private static let kinds = [("none", "None"), ("url", "Open URL"), ("app", "Open App"), ("key", "Press Keys"), ("repeat", "Repeat Keys"), ("type", "Type Text"), ("system", "System"), ("input", "Input Language"), ("script", "Run Script")]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -112,6 +112,11 @@ struct ActionsView: View {
                     }
                 case "key":
                     LabeledContent("Keys") { KeyRecorder(text: value) }
+                    AccessibilityNote()
+                case "repeat":
+                    LabeledContent("Keys") { KeyRecorder(text: value) }
+                    Text("Press the button to start pressing these keys every \(deck.config.repeatSeconds ?? 60)s, again to stop. Change the interval with \"repeatSeconds\" in deck.json.")
+                        .font(.caption).foregroundStyle(.secondary)
                     AccessibilityNote()
                 case "type":
                     TextField("Text", text: value, prompt: Text("Typed into the app in front"), axis: .vertical)
@@ -215,7 +220,7 @@ struct ActionsView: View {
     }
 
     /// Key and Type actions would land in this window, so Test is off for them.
-    private var typesIntoFrontApp: Bool { ["key", "type"].contains(effective(selected).type) }
+    private var typesIntoFrontApp: Bool { ["key", "repeat", "type"].contains(effective(selected).type) }
 
     private func setOwn(_ action: Action?) {
         deck.config.setAction(action, button: selected, gesture: gesture, profile: profile)
@@ -261,6 +266,7 @@ struct ActionsView: View {
     private func summary(_ action: Action) -> String {
         guard action.type != "none", let value = action.value, !value.isEmpty else { return "–" }
         if action.type == "key" { return keyComboSymbols(value) }
+        if action.type == "repeat" { return "⟳ " + keyComboSymbols(value) }
         if action.type == "type" { return "“\(value)”" }
         if ["system", "input"].contains(action.type) { return describe(action) }
         return action.type == "url" ? (URL(string: value)?.host() ?? value) : value
