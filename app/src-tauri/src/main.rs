@@ -292,6 +292,42 @@ fn allow_accessibility(app: AppHandle) {
     }
 }
 
+/// Asks before installing a newer release from GitHub, then restarts into it. Blocks: run it on its own thread.
+/// `manual` (from the tray) also says when there's nothing new or the check failed.
+fn check_for_update(app: &AppHandle, manual: bool) {
+    use tauri_plugin_dialog::{MessageDialogButtons, MessageDialogKind};
+    use tauri_plugin_updater::UpdaterExt;
+    let tell = |text: String, kind| {
+        app.dialog().message(text).title("ConsoleDeck").kind(kind).blocking_show();
+    };
+    let found = tauri::async_runtime::block_on(async { app.updater()?.check().await });
+    let update = match found {
+        Ok(Some(u)) => u,
+        Ok(None) => return if manual { tell(format!("ConsoleDeck {} is the latest version.", app.package_info().version), MessageDialogKind::Info) },
+        Err(e) => {
+            log::warn!("Update check failed: {e}");
+            return if manual { tell(format!("Cannot check for updates: {e}"), MessageDialogKind::Error) };
+        }
+    };
+    let install = app
+        .dialog()
+        .message(format!("ConsoleDeck {} is available (you have {}). Install it and restart?", update.version, update.current_version))
+        .title("ConsoleDeck Update")
+        .buttons(MessageDialogButtons::OkCancelCustom("Install".into(), "Later".into()))
+        .blocking_show();
+    if !install {
+        return;
+    }
+    log::info!("Installing ConsoleDeck {}", update.version);
+    match tauri::async_runtime::block_on(update.download_and_install(|_, _| {}, || {})) {
+        Ok(()) => app.restart(),
+        Err(e) => {
+            log::error!("Update failed: {e}");
+            tell(format!("Update failed: {e}"), MessageDialogKind::Error);
+        }
+    }
+}
+
 fn main() {
     let (tx, rx) = channel();
     let builder = tauri::Builder::default();
@@ -307,6 +343,7 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             get_state, set_action, add_profile, delete_profile, start_calibration, cancel_calibration,
             test_action, seal_password, pick_app, input_sources, system_actions, allow_accessibility
@@ -338,6 +375,7 @@ fn main() {
                 .separator()
                 .item(&tray.login)
                 .text("config", reveal)
+                .text("update", "Check for Updates…")
                 .text("quit", "Quit ConsoleDeck")
                 .build()?;
             TrayIconBuilder::with_id("main")
@@ -363,6 +401,10 @@ fn main() {
                             log::error!("Cannot show config: {e}");
                         }
                     }
+                    "update" => {
+                        let app = app.clone();
+                        std::thread::spawn(move || check_for_update(&app, true));
+                    }
                     "quit" => app.exit(0),
                     _ => {}
                 })
@@ -372,6 +414,11 @@ fn main() {
             std::thread::spawn(move || listen_forever(tx));
             let handle = app.handle().clone();
             std::thread::spawn(move || deck_loop(handle, rx));
+            let handle = app.handle().clone();
+            std::thread::spawn(move || loop {
+                check_for_update(&handle, false);
+                std::thread::sleep(Duration::from_secs(24 * 60 * 60)); // a tray app can run for weeks
+            });
             Ok(())
         })
         .build(tauri::generate_context!())

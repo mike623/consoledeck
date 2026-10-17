@@ -16,7 +16,15 @@ if [[ "$(uname)" == Darwin ]]; then
 else
   BUNDLES=nsis
 fi
-npx -y @tauri-apps/cli@2 build --bundles "$BUNDLES"
+# Updater bundles are signed with the key from `tauri signer generate -w ~/.tauri/consoledeck.key`
+# (CI has it as a secret). Without it, build without them.
+KEY=~/.tauri/consoledeck.key
+if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" && -f $KEY ]]; then
+  export TAURI_SIGNING_PRIVATE_KEY="$(cat $KEY)" TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
+fi
+NO_UPDATER=()
+[[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]] && NO_UPDATER=(--config '{"bundle":{"createUpdaterArtifacts":false}}')
+npx -y @tauri-apps/cli@2 build "${NO_UPDATER[@]+"${NO_UPDATER[@]}"}" --bundles "$BUNDLES"
 if [[ "${1:-}" == "install" && "$(uname)" == Darwin ]]; then
   pkill -x consoledeck || true
   pkill -x ConsoleDeck || true
