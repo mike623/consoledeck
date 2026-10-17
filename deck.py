@@ -23,8 +23,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 # shared with the tray app in app/
-CONFIG = Path.home() / ".consoledeck/deck.json"
-OLD_CONFIGS = [Path.home() / "Library/Application Support/ConsoleDeck/deck.json", HERE / "deck.json"]
+CONFIG = Path.home() / ".config/consoledeck/deck.json"
+OLD_CONFIGS = [Path.home() / p for p in (".consoledeck/deck.json", "Library/Application Support/ConsoleDeck/deck.json")]
+OLD_CONFIGS.append(HERE / "deck.json")
 BAUD = 115200
 LAYOUT = [[1, 2, 3], [4, 5, 6], [7, 8, 9, 10]]  # 3.3.4, numbered left-top to right-bottom
 POSITIONS = [n for row in LAYOUT for n in row]
@@ -57,8 +58,9 @@ def load():
     old = next((p for p in OLD_CONFIGS if p.exists()), None)
     if not CONFIG.exists() and old:  # one-time move from where older versions kept it
         CONFIG.parent.mkdir(parents=True, exist_ok=True)
-        for f in old.parent.glob("*") if old.parent.name == "ConsoleDeck" else [old]:  # deck.json and secret.key
-            f.rename(CONFIG.parent / f.name)
+        for f in (old, old.with_name("secret.key")):
+            if f.exists():
+                f.rename(CONFIG.parent / f.name)
     try:
         return json.loads(CONFIG.read_text())
     except FileNotFoundError:

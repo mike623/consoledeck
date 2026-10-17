@@ -71,23 +71,21 @@ pub struct Config {
 }
 
 impl Config {
-    /// ~/.consoledeck on both systems, outside any app folder so uninstallers and updates leave it alone.
+    /// ~/.config/consoledeck on Mac (not ~/Library/Application Support, which uninstallers delete with the
+    /// app), %APPDATA%\ConsoleDeck on Windows. Not $XDG_CONFIG_HOME: apps opened from Finder don't see it.
     pub fn path() -> PathBuf {
-        dirs::home_dir().expect("no home folder").join(".consoledeck").join("deck.json")
+        #[cfg(target_os = "macos")]
+        let dir = dirs::home_dir().expect("no home folder").join(".config").join("consoledeck");
+        #[cfg(not(target_os = "macos"))]
+        let dir = dirs::config_dir().expect("no config folder").join("ConsoleDeck");
+        dir.join("deck.json")
     }
 
-    /// One-time move of deck.json and secret.key from where older versions kept them
-    /// (~/Library/Application Support/ConsoleDeck, %APPDATA%\ConsoleDeck).
+    /// One-time move of deck.json and secret.key from where older versions kept them.
     pub fn migrate() {
-        let new = Self::path().parent().unwrap().to_path_buf();
-        let Some(old) = dirs::data_dir().map(|d| d.join("ConsoleDeck")) else { return };
-        if new.exists() || !old.join("deck.json").exists() {
-            return;
-        }
-        match std::fs::rename(&old, &new) {
-            Ok(()) => log::info!("Moved settings from {} to {}", old.display(), new.display()),
-            Err(e) => log::error!("Cannot move settings from {} to {}: {e}", old.display(), new.display()),
-        }
+        let home = dirs::home_dir().expect("no home folder");
+        let old = [home.join(".consoledeck"), dirs::data_dir().expect("no data folder").join("ConsoleDeck")];
+        move_settings(&old, Self::path().parent().unwrap());
     }
 
     /// A missing file is an empty config; a broken one is an error so the caller keeps the last good one.
@@ -144,11 +142,50 @@ pub fn normalize_url(value: &str) -> String {
     if value.contains("://") { value.to_string() } else { format!("https://{value}") }
 }
 
+fn move_settings(old_dirs: &[PathBuf], new: &std::path::Path) {
+    if new.join("deck.json").exists() {
+        return;
+    }
+    let Some(old) = old_dirs.iter().find(|d| d.as_path() != new && d.join("deck.json").exists()) else { return };
+    let moved = std::fs::create_dir_all(new).and_then(|_| {
+        for f in ["deck.json", "secret.key"].map(|f| old.join(f)).iter().filter(|f| f.exists()) {
+            std::fs::rename(f, new.join(f.file_name().unwrap()))?;
+        }
+        Ok(())
+    });
+    match moved {
+        Ok(()) => {
+            let _ = std::fs::remove_dir(old); // only if nothing else is in it
+            log::info!("Moved settings from {} to {}", old.display(), new.display())
+        }
+        Err(e) => log::error!("Cannot move settings from {} to {}: {e}", old.display(), new.display()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     const SAFARI: Option<&str> = Some("com.apple.Safari");
+
+    #[test]
+    fn moves_settings_from_first_old_folder_once() {
+        let t = std::env::temp_dir().join(format!("consoledeck-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&t);
+        let (a, b, new) = (t.join("a"), t.join("b"), t.join("config/consoledeck"));
+        for d in [&a, &b] {
+            std::fs::create_dir_all(d).unwrap();
+            std::fs::write(d.join("deck.json"), d.to_str().unwrap()).unwrap();
+        }
+        std::fs::write(b.join("secret.key"), "k").unwrap();
+        move_settings(&[t.join("missing"), b.clone(), a.clone()], &new);
+        assert_eq!(std::fs::read_to_string(new.join("deck.json")).unwrap(), b.to_str().unwrap());
+        assert_eq!(std::fs::read_to_string(new.join("secret.key")).unwrap(), "k");
+        assert!(!b.exists() && a.exists());
+        move_settings(&[a.clone()], &new); // already there: left alone
+        assert_eq!(std::fs::read_to_string(new.join("deck.json")).unwrap(), b.to_str().unwrap());
+        std::fs::remove_dir_all(&t).unwrap();
+    }
 
     fn profiled() -> Config {
         Config::parse(r#"{
