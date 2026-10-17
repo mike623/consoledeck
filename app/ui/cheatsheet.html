@@ -1,0 +1,27 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>ConsoleDeck Cheat Sheet</title><link rel="stylesheet" href="style.css">
+<style>
+  html, body { background: transparent; padding: 0; overflow: hidden; }
+  .panel { margin: 8px; padding: 16px 18px; border-radius: 16px; background: color-mix(in srgb, var(--bg) 92%, transparent);
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid var(--line); }
+  h1 { font-size: 15px; margin: 0 0 12px; text-align: center; }
+  .cell { width: 130px; height: 76px; padding: 8px; border-radius: 10px; background: var(--key); font-size: 13px; overflow: hidden; }
+  .cell b { font-size: 11px; color: var(--muted); display: block; }
+  .cell div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+</style></head>
+<body><div id="root" class="panel"></div>
+<script src="common.js"></script>
+<script>
+live((s) => {
+  const app = s.frontApp?.id;
+  const cell = (n) => el("div", { class: "cell" }, el("b", {}, `${n}`),
+    GESTURES.map(([g, title]) => {
+      const label = shortLabel(actionFor(s.config, n, g, app));
+      return (g === "press" || label !== "–") && el("div", {}, (g === "press" ? "" : title.split(" ")[0] + ": ") + label);
+    }));
+  document.getElementById("root").replaceChildren(
+    el("h1", {}, s.profileName),
+    el("div", { class: "grid" }, LAYOUT.map((row) => el("div", { class: "row" }, row.map(cell)))),
+  );
+});
+</script></body></html>

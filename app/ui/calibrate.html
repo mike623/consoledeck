@@ -1,0 +1,21 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Calibrate ConsoleDeck</title><link rel="stylesheet" href="style.css"></head>
+<body><div id="root" class="stack center"></div>
+<script src="common.js"></script>
+<script>
+live((s) => {
+  const cal = s.calibration;
+  const label = (n) => cal
+    ? Object.keys(cal).find((pin) => cal[pin] === n) ?? "–"
+    : Object.keys(s.config.pins).find((pin) => s.config.pins[pin] === n) ?? "not set";
+  const cls = (n) => !cal ? "" : n === s.nextToCalibrate ? "on" : Object.values(cal).includes(n) ? "done" : "";
+  document.getElementById("root").replaceChildren(
+    el("div", {}, cal ? "Press the highlighted button on the deck."
+      : "Press Start, then press each deck button when it lights up. Don't touch the knob."),
+    deckGrid({ label, cls }),
+    el("div", { class: "muted" }, s.calibrationNote || s.status),
+    cal ? el("button", { class: "btn", onclick: () => invoke("cancel_calibration") }, "Cancel")
+        : el("button", { class: "btn primary", onclick: () => invoke("start_calibration") }, "Start"),
+  );
+});
+</script></body></html>

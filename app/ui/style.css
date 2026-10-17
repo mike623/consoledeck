@@ -1,0 +1,38 @@
+:root {
+  --bg: #f4f4f6; --fg: #1d1d1f; --muted: #6e6e73; --key: rgba(120,120,128,.15); --accent: #0a84ff;
+  --accent-soft: rgba(10,132,255,.55); --ok: rgba(52,199,89,.35); --warn: #c46a00; --field: #fff; --line: rgba(0,0,0,.12);
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #1e1e20; --fg: #f2f2f7; --muted: #98989f; --key: rgba(120,120,128,.28); --field: #2c2c2e; --line: rgba(255,255,255,.14); --warn: #ff9f0a; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 20px; font: 13px/1.4 -apple-system, "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--fg); user-select: none; }
+.grid { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.row { display: flex; gap: 8px; }
+.key { width: 74px; height: 54px; border: 0; border-radius: 8px; background: var(--key); color: inherit; font: inherit;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2px 4px; }
+.key b { font-size: 15px; }
+.key span { font-size: 11px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.key.on { background: var(--accent-soft); } .key.done { background: var(--ok); } .key.own span { color: var(--fg); }
+button.key:not(:disabled) { cursor: pointer; }
+.muted { color: var(--muted); } .small { font-size: 11px; } .warn { color: var(--warn); } .center { text-align: center; }
+.bar { display: flex; gap: 6px; align-items: center; } .bar > .grow { flex: 1; }
+select, input, textarea, .btn { font: inherit; color: inherit; background: var(--field); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
+textarea { width: 100%; resize: vertical; } input[type=text], input[type=password] { width: 100%; }
+.btn { cursor: pointer; } .btn.primary { background: var(--accent); color: #fff; border-color: transparent; }
+.btn:disabled { opacity: .5; cursor: default; }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.seg button { flex: 1; border: 0; background: transparent; color: inherit; font: inherit; padding: 5px; cursor: pointer; }
+.seg button.on { background: var(--accent); color: #fff; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
+.field { display: grid; grid-template-columns: 90px 1fr; gap: 8px; align-items: center; margin-bottom: 10px; }
+.field > label { text-align: right; color: var(--muted); }
+.stack > * + * { margin-top: 14px; }
+.menu { position: absolute; background: var(--field); border: 1px solid var(--line); border-radius: 8px; padding: 4px; z-index: 9;
+  box-shadow: 0 6px 24px rgba(0,0,0,.2); max-height: 300px; overflow: auto; min-width: 180px; }
+.menu button { display: block; width: 100%; text-align: left; border: 0; background: none; color: inherit; font: inherit; padding: 5px 10px; border-radius: 5px; cursor: pointer; }
+.menu button:hover { background: var(--accent); color: #fff; }
+.menu hr { margin: 4px 0; }
+.bar > input, .bar > select, .bar > textarea { flex: 1; min-width: 0; width: auto; }
+.field > div { min-width: 0; }

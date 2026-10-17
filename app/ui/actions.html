@@ -1,0 +1,184 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>ConsoleDeck Actions</title><link rel="stylesheet" href="style.css"></head>
+<body><div id="root" class="stack"></div>
+<script src="common.js"></script>
+<script>
+const KINDS = [["none", "None"], ["url", "Open URL"], ["app", "Open App"], ["key", "Press Keys"], ["repeat", "Repeat Keys"],
+  ["type", "Type Text"], ["password", "Type Password"], ["system", "System"], ["input", "Input Language"], ["script", "Run Script"]];
+/** Key and Type actions would land in this window, so Test is off for them. */
+const TYPES_INTO_FRONT_APP = ["key", "repeat", "type", "password"];
+
+let S;                 // latest state from the app
+let selected = 1;
+let gesture = "press";
+let profileId;         // undefined until first render; null = Default
+let recording = false;
+let menuOpen = false;
+
+const cfg = () => S.config;
+/** Selected profile, or null for Default (also when the profile was deleted elsewhere). */
+const profile = () => (profileId && cfg().profiles[profileId] ? profileId : null);
+/** What `profile` itself sets for button n. undefined in a profile means "use default". */
+const own = (n) => (profile() ? cfg().profiles[profile()].buttons : cfg().buttons)[buttonKey(n, gesture)];
+/** What pressing button n does while this profile is active. */
+const effective = (n) => actionFor(cfg(), n, gesture, profile());
+
+/** Every edit is saved straight away, like deck.py. */
+const setOwn = (action) => invoke("set_action", { profile: profile(), gesture, button: selected, action });
+
+function setKind(type) {
+  if (type === "inherit") return setOwn(null);
+  // a value only carries over between kinds that store the same thing (a key combo)
+  const combo = ["key", "repeat"];
+  const old = own(selected);
+  const keep = old && (old.type === type || (combo.includes(old.type) && combo.includes(type)));
+  setOwn(keep ? { ...old, type } : { type });
+}
+
+const setValue = (value) => setOwn({ ...(own(selected) ?? { type: "none" }), value });
+
+async function addProfile(app) {
+  menuOpen = false;
+  await invoke("add_profile", { id: app.id, name: app.name });
+  profileId = app.id;
+  render();
+}
+
+// Recording: the next key press (with modifiers) becomes the combo; swallowed so ⌘W etc. don't act on the window.
+window.addEventListener("keydown", (e) => {
+  if (!recording) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const combo = comboFromEvent(e);
+  if (combo) {
+    recording = false;
+    setValue(combo);
+  }
+}, true);
+
+function keyRecorder() {
+  const v = own(selected)?.value ?? "";
+  return el("button", { class: "btn", style: "font-family: ui-monospace, monospace",
+    onclick: () => { recording = !recording; render(); } },
+    recording ? "Press keys…" : v ? comboSymbols(v) : "Record");
+}
+
+function accessibilityNote() {
+  if (!S.mac || S.accessibility) return null;
+  return el("div", { class: "bar warn" }, el("span", { class: "grow" }, "Needs Accessibility permission to press keys"),
+    el("button", { class: "btn", onclick: () => invoke("allow_accessibility") }, "Allow…"));
+}
+
+const note = (text) => el("div", { class: "small muted" }, text);
+const field = (label, ...control) => el("div", { class: "field" }, el("label", {}, label), el("div", {}, ...control));
+const textInput = (attrs) => el("input", { type: "text", value: own(selected)?.value ?? "", onchange: (e) => setValue(e.target.value), ...attrs });
+const textArea = (attrs) => {
+  const t = el("textarea", { onchange: (e) => setValue(e.target.value), ...attrs });
+  t.value = own(selected)?.value ?? "";
+  return t;
+};
+
+function valueEditor(kind) {
+  const value = own(selected)?.value ?? "";
+  switch (kind) {
+    case "inherit": return field("Default", el("span", {}, shortLabel(cfg().buttons[buttonKey(selected, gesture)] ?? { type: "none" })));
+    case "url": return field("URL", textInput({ placeholder: "https://example.com" }));
+    case "app": return field("App", el("div", { class: "bar" }, textInput({ placeholder: IS_MAC ? "Safari" : "notepad" }),
+      el("button", { class: "btn", onclick: async () => { const a = await invoke("pick_app"); if (a) setValue(a.open); } }, "Choose…")));
+    case "key": return [field("Keys", keyRecorder()), accessibilityNote()];
+    case "repeat": return [field("Keys", keyRecorder()),
+      note(`Press the button to start pressing these keys every ${cfg().repeatSeconds ?? 60}s, again to stop. Change the interval with "repeatSeconds" in deck.json.`),
+      accessibilityNote()];
+    case "type": return [field("Text", textArea({ rows: 3, placeholder: "Typed into the app in front" })), accessibilityNote()];
+    case "password": {
+      const input = el("input", { type: "password", placeholder: value ? "Saved, type to replace" : "Not set",
+        onkeydown: (e) => e.key === "Enter" && save() });
+      const save = async () => {
+        const sealed = input.value && await invoke("seal_password", { password: input.value });
+        if (sealed) setValue(sealed);
+      };
+      return [field("Password", el("div", { class: "bar" }, input, el("button", { class: "btn", onclick: save }, "Save"))),
+        note("Saved encrypted in deck.json (key in secret.key beside it) and shown masked."), accessibilityNote()];
+    }
+    case "system": return [field("Action", el("select", { onchange: (e) => setValue(e.target.value) },
+        !value && el("option", { value: "" }, "Choose…"),
+        Object.entries(names.system).map(([id, label]) => el("option", { value: id, selected: id === value }, label)))),
+      value === "lock" && accessibilityNote(),
+      value === "cheatsheet" && note("Shows every button's actions over the app in front. Set it as a Long Press: it stays up while you hold the button.")];
+    case "input": return field("Language", el("select", { onchange: (e) => setValue(e.target.value) },
+      !value ? el("option", { value: "" }, "Choose…")
+        : !names.input[value] && el("option", { value, selected: true }, `${value} (not enabled)`),
+      Object.entries(names.input).map(([id, name]) => el("option", { value: id, selected: id === value }, name))));
+    case "script": return field("Command", textArea({ rows: 4, placeholder: IS_MAC ? "~/bin/thing.sh" : "C:\\tools\\thing.bat",
+      style: "font-family: ui-monospace, Consolas, monospace" }));
+    default: return null;
+  }
+}
+
+function profileBar() {
+  const profiles = Object.entries(cfg().profiles).sort((a, b) => a[1].name.localeCompare(b[1].name));
+  const addable = S.recentApps.filter((a) => !cfg().profiles[a.id]);
+  const plus = el("button", { class: "btn", title: "Add a profile for an app", onclick: () => { menuOpen = !menuOpen; render(); } }, "+");
+  return el("div", { class: "bar", style: "position: relative" },
+    el("select", { class: "grow", onchange: (e) => { profileId = e.target.value || null; render(); } },
+      el("option", { value: "" }, "Default"),
+      profiles.map(([id, p]) => el("option", { value: id, selected: id === profile() }, p.name))),
+    plus,
+    el("button", { class: "btn", title: "Delete this profile", disabled: !profile(), onclick: async () => {
+      const name = cfg().profiles[profile()].name;
+      if (!confirm(`Delete the ${name} profile? Its button actions are removed. Buttons go back to the default actions in that app.`)) return;
+      await invoke("delete_profile", { id: profile() });
+      profileId = null;
+    } }, "−"),
+    menuOpen && el("div", { class: "menu", style: "right: 30px; top: 32px" },
+      addable.map((a) => el("button", { onclick: () => addProfile(a) }, a.name)),
+      addable.length > 0 && el("hr"),
+      el("button", { onclick: async () => { const a = await invoke("pick_app"); if (a) addProfile(a); else { menuOpen = false; render(); } } }, "Choose App…")));
+}
+
+function render() {
+  const kind = own(selected)?.type ?? (profile() ? "inherit" : "none");
+  const eff = effective(selected);
+  const typesIntoFrontApp = TYPES_INTO_FRONT_APP.includes(eff.type);
+  const gestureTitle = GESTURES.find(([g]) => g === gesture)[1];
+  const calibrated = Object.values(cfg().pins).includes(selected);
+  document.getElementById("root").replaceChildren(
+    profileBar(),
+    el("div", { class: "seg" }, GESTURES.map(([g, title]) =>
+      el("button", { class: g === gesture ? "on" : "", onclick: () => { gesture = g; recording = false; render(); } }, title))),
+    deckGrid({
+      label: (n) => shortLabel(effective(n)),
+      cls: (n) => [n === selected && "on", (!profile() || own(n)) && "own"].filter(Boolean).join(" "),
+      onTap: (n) => { selected = n; recording = false; render(); },
+    }),
+    el("hr"),
+    field(gesture === "press" ? `Button ${selected} does` : `${gestureTitle} ${selected} does`,
+      el("select", { onchange: (e) => setKind(e.target.value) },
+        profile() && el("option", { value: "inherit", selected: kind === "inherit" }, "Use Default"),
+        KINDS.map(([k, label]) => el("option", { value: k, selected: k === kind }, label)))),
+    valueEditor(kind),
+    el("div", { class: "bar" },
+      !calibrated && el("span", { class: "warn" }, "⚠ Not calibrated yet"),
+      el("span", { class: "grow small muted" }, gesture === "press" ? "" : "Buttons with long or double actions wait a moment to tell presses apart."),
+      el("button", { class: "btn", disabled: !eff.value || typesIntoFrontApp,
+        title: typesIntoFrontApp ? "Goes to the app in front; press the deck button in that app to test" : "",
+        onclick: () => invoke("test_action", { action: eff }) }, "Test")),
+  );
+}
+
+live((state) => {
+  S = state;
+  // start on the profile of the app you came from, if it has one
+  if (profileId === undefined) profileId = cfg().profiles[S.frontApp?.id] ? S.frontApp.id : null;
+  // don't yank the field someone is typing in
+  if (["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName) && document.hasFocus()) return;
+  render();
+});
+// rechecks Accessibility while the note is up
+setInterval(async () => {
+  if (S?.mac && !S.accessibility) {
+    S = await invoke("get_state");
+    if (S.accessibility) render();
+  }
+}, 1500);
+</script></body></html>
