@@ -14,6 +14,7 @@ Turn a [Console Deck V2](https://makerworld.com/en/models/1717141-console-deck-v
 - **Wire it however you like**: a calibration window maps whatever pins your buttons use to the 3-3-4 layout.
 - **Per-app profiles**: buttons change with the app in front, and fall back to the default profile.
 - **Gestures**: press, long press and double press on every button.
+- **Pages**: more buttons than the deck has. Give a button **Next Page** or **Previous Page** (System) and add pages with **+** in Edit Actions.
 - **Many action types**: open a URL or app, run a shell script, press a key combo, type text, switch input language, lock, sleep, volume and more.
 - **Auto-reconnect** when the deck is unplugged or the board reboots.
 - **Start at login** toggle in the menu.
