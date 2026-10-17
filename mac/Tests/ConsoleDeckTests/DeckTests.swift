@@ -174,7 +174,7 @@ import Testing
 }
 
 @Test func systemActionsAllRunnable() {
-    for (id, _) in systemActions where id != "lock" && id != "inputsource" {  // in-process, not commands
+    for (id, _) in systemActions where !["lock", "inputsource", "editor"].contains(id) {  // in-process, not commands
         #expect(systemCommand(id) != nil, "no command for \(id)")
     }
     #expect(KeyCombo("ctrl+cmd+q") != nil)

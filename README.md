@@ -86,7 +86,7 @@ mac/build.sh install   # builds, copies to ~/Applications and launches
 | Repeat Keys | Toggles pressing a key combo every N seconds; stop it from the menu |
 | Type Text | Types a string, newlines become Return |
 | Input Language | Switches to a specific input source |
-| System | Lock Screen, Sleep, Turn Display Off, Screen Saver, Next Input Language, Mute, Volume Up/Down, Log Out, Restart, Shut Down |
+| System | Lock Screen, Sleep, Turn Display Off, Screen Saver, Next Input Language, Mute, Volume Up/Down, Log Out, Restart, Shut Down, Open ConsoleDeck Editor |
 
 Log Out, Restart and Shut Down go through macOS's own confirmation dialog, so a stray press can't lose work.
 

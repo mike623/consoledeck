@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import os
 import ServiceManagement
+import SwiftUI
 
 let logger = Logger(subsystem: "com.consoledeck.app", category: "deck")
 
@@ -157,6 +158,8 @@ func run(_ action: Action) {
     case "system" where value == "inputsource":
         selectNextInputSource()
         return
+    case "system" where value == "editor":
+        return  // Deck.fire opens it; from the editor's Test button it's already open
     case "system":
         guard let command = systemCommand(value) else { return logger.error("Unknown system action \(value, privacy: .public)") }
         args = command
@@ -188,6 +191,8 @@ final class Deck {
     /// Key combo a "repeat" action is auto-pressing (keeps idle-kicking streams like Boosteroid alive).
     var repeating: String?
     @ObservationIgnored private var repeatTimer: Timer?
+    /// SwiftUI's window opener, handed over by the menu bar icon so deck presses can open windows.
+    @ObservationIgnored var openWindow: OpenWindowAction?
     @ObservationIgnored private var gestures: GestureDetector!
 
     func setStartsAtLogin(_ on: Bool) {
@@ -324,7 +329,14 @@ final class Deck {
         lastPress = "Last: " + summary
         logger.notice("\(summary, privacy: .public)")
         if action.type == "repeat" { return toggleRepeat(action.value ?? "") }
+        if action == Action(type: "system", value: "editor") { return show("actions") }
         run(action)
+    }
+
+    func show(_ id: String) {
+        guard let openWindow else { return logger.error("Cannot open \(id, privacy: .public): window opener not ready") }
+        openWindow(id: id)
+        NSApp.activate()  // menu bar apps don't come to the front on their own
     }
 
     /// Same combo again stops it; a different repeat button switches to its combo.

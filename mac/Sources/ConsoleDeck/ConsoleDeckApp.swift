@@ -6,8 +6,10 @@ struct ConsoleDeckApp: App {
     @State private var deck = Deck()
 
     var body: some Scene {
-        MenuBarExtra("ConsoleDeck", systemImage: "square.grid.3x3.fill") {
+        MenuBarExtra {
             MenuContent(deck: deck)
+        } label: {
+            MenuBarIcon(deck: deck)
         }
         Window("Calibrate ConsoleDeck", id: "calibrate") {
             CalibrateView(deck: deck)
@@ -22,9 +24,19 @@ struct ConsoleDeckApp: App {
     }
 }
 
-struct MenuContent: View {
+/// Drawn at launch (unlike the menu), so it hands the deck SwiftUI's window opener for "Open ConsoleDeck Editor".
+struct MenuBarIcon: View {
     let deck: Deck
     @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Image(systemName: "square.grid.3x3.fill")
+            .onAppear { deck.openWindow = openWindow }
+    }
+}
+
+struct MenuContent: View {
+    let deck: Deck
 
     var body: some View {
         Text(deck.status)
@@ -34,16 +46,11 @@ struct MenuContent: View {
             Button("Stop Repeating \(keyComboSymbols(combo))") { deck.toggleRepeat(combo) }
         }
         Divider()
-        Button("Edit Actions…") { show("actions") }
-        Button("Calibrate Buttons…") { show("calibrate") }
+        Button("Edit Actions…") { deck.show("actions") }
+        Button("Calibrate Buttons…") { deck.show("calibrate") }
         Divider()
         Toggle("Start at Login", isOn: Binding { deck.startsAtLogin } set: { deck.setStartsAtLogin($0) })
         Button("Show Config in Finder") { NSWorkspace.shared.activateFileViewerSelecting([Config.url]) }
         Button("Quit ConsoleDeck") { NSApp.terminate(nil) }.keyboardShortcut("q")
-    }
-
-    private func show(_ id: String) {
-        openWindow(id: id)
-        NSApp.activate()  // menu bar apps don't come to the front on their own
     }
 }
