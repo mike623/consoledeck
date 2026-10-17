@@ -50,7 +50,7 @@ fn write_private(path: &std::path::Path, data: &[u8]) -> std::io::Result<()> {
 
 #[cfg(not(unix))]
 fn write_private(path: &std::path::Path, data: &[u8]) -> std::io::Result<()> {
-    std::fs::write(path, data) // %APPDATA% is already private to the user
+    std::fs::write(path, data) // the home folder is already private to the user
 }
 
 pub fn encrypt(password: &str, key: &[u8]) -> Option<String> {

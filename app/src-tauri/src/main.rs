@@ -409,6 +409,7 @@ fn main() {
                     _ => {}
                 })
                 .build(app)?;
+            Config::migrate();
             let deck = Deck::new(std::process::id(), Config::load, Config::save);
             app.manage(Shared { deck: Mutex::new(deck), tray, shown: Mutex::new(String::new()) });
             std::thread::spawn(move || listen_forever(tx));

@@ -99,7 +99,7 @@ On macOS, Log Out, Restart and Shut Down go through macOS's own confirmation dia
 
 ## Configuration
 
-Settings live in `~/Library/Application Support/ConsoleDeck/deck.json` on macOS and `%APPDATA%\ConsoleDeck\deck.json` on Windows (menu → **Show Config**). The app re-reads it on every press, so hand edits apply immediately. Timing knobs without UI (defaults shown):
+Settings live in `~/.consoledeck/deck.json` (`%USERPROFILE%\.consoledeck\deck.json` on Windows; older versions' settings are moved there on first launch) (menu → **Show Config**). The app re-reads it on every press, so hand edits apply immediately. Timing knobs without UI (defaults shown):
 
 ```json
 {

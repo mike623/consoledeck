@@ -1,4 +1,4 @@
-//! deck.json, shared with the Swift app and deck.py.
+//! deck.json, shared with deck.py.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -71,9 +71,23 @@ pub struct Config {
 }
 
 impl Config {
-    /// Same file as the Swift app on Mac (~/Library/Application Support), %APPDATA% on Windows.
+    /// ~/.consoledeck on both systems, outside any app folder so uninstallers and updates leave it alone.
     pub fn path() -> PathBuf {
-        dirs::data_dir().expect("no user data folder").join("ConsoleDeck").join("deck.json")
+        dirs::home_dir().expect("no home folder").join(".consoledeck").join("deck.json")
+    }
+
+    /// One-time move of deck.json and secret.key from where older versions kept them
+    /// (~/Library/Application Support/ConsoleDeck, %APPDATA%\ConsoleDeck).
+    pub fn migrate() {
+        let new = Self::path().parent().unwrap().to_path_buf();
+        let Some(old) = dirs::data_dir().map(|d| d.join("ConsoleDeck")) else { return };
+        if new.exists() || !old.join("deck.json").exists() {
+            return;
+        }
+        match std::fs::rename(&old, &new) {
+            Ok(()) => log::info!("Moved settings from {} to {}", old.display(), new.display()),
+            Err(e) => log::error!("Cannot move settings from {} to {}: {e}", old.display(), new.display()),
+        }
     }
 
     /// A missing file is an empty config; a broken one is an error so the caller keeps the last good one.
