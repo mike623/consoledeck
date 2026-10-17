@@ -139,7 +139,12 @@ pub fn view(d: &Deck) -> MobileView {
             .iter()
             .map(|a| {
                 let p = plugins::find(&d.plugins, &a.kind);
-                let label = p.map_or_else(|| format!("{} (not installed)", a.kind), |p| p.manifest.label.clone().unwrap_or(p.manifest.name.clone()));
+                // a tile with a value is one of the plugin's choices: "Fire Res", not "Last Epoch Character"
+                let choice = |p: &Plugin| p.manifest.fields.first()?.options.iter().find(|o| a.value.as_ref() == Some(&o.value)).map(|o| o.label.clone());
+                let label = p.map_or_else(
+                    || format!("{} (not installed)", a.kind),
+                    |p| choice(p).or(p.manifest.label.clone()).unwrap_or(p.manifest.name.clone()),
+                );
                 DisplayView { label, live: p.and_then(|p| p.manifest.live(a)).and_then(|k| d.live.get(&k).map(|l| crate::live::clip(l))) }
             })
             .collect(),
@@ -418,5 +423,9 @@ mod tests {
         assert!(live[0].1.ends_with("memory"), "{live:?}");
         let out = serde_json::to_string(&view(&d)).unwrap();
         assert!(out.contains(r#""displays":[{"label":"RAM","live":null},{"label":"gone (not installed)","live":null}]"#), "{out}");
+        d.config.displays = vec![Action::new("le-character", "sheet.Fire Resistance")];
+        let live = live_commands(&d);
+        assert_eq!(live[0].0[2], "sheet.Fire Resistance");
+        assert!(serde_json::to_string(&view(&d)).unwrap().contains(r#""label":"Fire Res""#));
     }
 }
