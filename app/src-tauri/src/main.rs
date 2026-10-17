@@ -517,6 +517,7 @@ fn main() {
                 .separator()
                 .item(&tray.login)
                 .text("config", reveal)
+                .text("log", "Open Log")
                 .separator()
                 .item(&item("version", &format!("ConsoleDeck {}", app.package_info().version), false)?)
                 .text("update", "Check for Updates…")
@@ -543,6 +544,12 @@ fn main() {
                     "config" => {
                         if let Err(e) = app.opener().reveal_item_in_dir(Config::path()) {
                             log::error!("Cannot show config: {e}");
+                        }
+                    }
+                    "log" => {
+                        let log = app.path().app_log_dir().map(|d| d.join(format!("{}.log", app.package_info().name)));
+                        if let Err(e) = log.map_err(|e| e.to_string()).and_then(|p| app.opener().open_path(p.to_string_lossy(), None::<&str>).map_err(|e| e.to_string())) {
+                            log::error!("Cannot open log: {e}");
                         }
                     }
                     "update" => {

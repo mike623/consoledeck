@@ -2,7 +2,7 @@
 //! and how apps, scripts and plugin commands are launched.
 
 use serde::Serialize;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 /// The app in front, which picks the profile. `id` is the bundle ID on Mac, the exe name on Windows.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -40,15 +40,34 @@ fn start(mut cmd: Command, what: &[&str]) {
         cmd.current_dir(home);
     }
     prepare(&mut cmd);
-    if let Err(e) = cmd.spawn() {
-        log::error!("{what:?} failed: {e}");
+    // Waited on in a thread so a failing script says why in the log (its stderr), not just nothing.
+    let child = cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped()).spawn();
+    let what = what.join(" ");
+    match child {
+        Ok(child) => {
+            std::thread::spawn(move || match child.wait_with_output() {
+                Ok(out) if !out.status.success() => {
+                    let err = String::from_utf8_lossy(&out.stderr);
+                    let tail: Vec<&str> = err.trim().lines().rev().take(5).collect(); // ponytail: last 5 lines are enough to see why
+                    let tail: Vec<&str> = tail.into_iter().rev().collect();
+                    log::error!("{what} failed ({}): {}", out.status, tail.join(" | "));
+                }
+                Ok(_) => {}
+                Err(e) => log::error!("{what}: {e}"),
+            });
+        }
+        Err(e) => log::error!("{what} failed: {e}"),
     }
 }
 
 fn prepare(cmd: &mut Command) {
     #[cfg(target_os = "macos")]
-    // Apps launched from Finder get a bare PATH; scripts expect Homebrew tools.
-    cmd.env("PATH", "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin");
+    // Apps launched from Finder get a bare PATH; scripts expect Homebrew tools and per-user ones (uv, pipx, cargo).
+    {
+        let home = dirs::home_dir().unwrap_or_default();
+        let home = home.display();
+        cmd.env("PATH", format!("{home}/.local/bin:{home}/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"));
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
