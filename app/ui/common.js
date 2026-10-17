@@ -6,12 +6,16 @@ const { listen } = window.__TAURI__.event;
 const LAYOUT = [[1, 2, 3], [4, 5, 6], [7, 8, 9, 10]];
 const GESTURES = [["press", "Press"], ["long", "Long Press"], ["double", "Double Press"]];
 
-/** Key in deck.json's buttons: "3", "3.long", "3.double". */
-const buttonKey = (n, g) => (g === "press" ? `${n}` : `${n}.${g}`);
+/** Key in deck.json's buttons: "3", "3.long", "3.double", and "p2.3", "p2.3.long" on page 2. */
+const buttonKey = (n, g, page = 1) => (page > 1 ? `p${page}.` : "") + (g === "press" ? `${n}` : `${n}.${g}`);
+const pageOf = (key) => +(/^p(\d+)\./.exec(key)?.[1] ?? 1);
+/** Highest page with a button set, in the default buttons or the app's profile (same as the deck). */
+const pageCount = (config, appId) =>
+  Math.max(1, ...[...Object.keys(config.buttons), ...Object.keys(config.profiles[appId]?.buttons ?? {})].map(pageOf));
 
 /** Front app's profile first, then the default buttons. */
-function actionFor(config, n, gesture, appId) {
-  const k = buttonKey(n, gesture);
+function actionFor(config, n, gesture, appId, page = 1) {
+  const k = buttonKey(n, gesture, page);
   return config.profiles[appId]?.buttons[k] ?? config.buttons[k] ?? { type: "none" };
 }
 
@@ -80,6 +84,8 @@ const namesReady = Promise.all([
 
 /** Built into ConsoleDeck: the deck itself handles them, so they're there even without the System plugin. */
 const CORE_SYSTEM = [{ value: "editor", label: "Open ConsoleDeck Editor" },
+  { value: "nextpage", label: "Next Page", note: "Switches every button to the next page; after the last page comes page 1. Put a page button on each page to get back." },
+  { value: "prevpage", label: "Previous Page" },
   { value: "cheatsheet", label: "Show Cheat Sheet", note: "Shows every button's actions over the app in front. Set it as a Long Press: it stays up while you hold the button." }];
 
 /** The plugin behind an action type, or undefined when it isn't installed. */

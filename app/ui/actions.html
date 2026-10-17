@@ -12,6 +12,7 @@ const NEEDS_ACCESSIBILITY = [...TYPES_INTO_FRONT_APP, "media"];
 let S;                 // latest state from the app
 let selected = 1;
 let gesture = "press";
+let page = 1;
 let profileId;         // undefined until first render; null = Default
 let recording = false;
 let menuOpen = false;
@@ -23,12 +24,12 @@ const cfg = () => S.config;
 /** Selected profile, or null for Default (also when the profile was deleted elsewhere). */
 const profile = () => (profileId && cfg().profiles[profileId] ? profileId : null);
 /** What `profile` itself sets for button n. undefined in a profile means "use default". */
-const own = (n) => (profile() ? cfg().profiles[profile()].buttons : cfg().buttons)[buttonKey(n, gesture)];
+const own = (n) => (profile() ? cfg().profiles[profile()].buttons : cfg().buttons)[buttonKey(n, gesture, page)];
 /** What pressing button n does while this profile is active. */
-const effective = (n) => actionFor(cfg(), n, gesture, profile());
+const effective = (n) => actionFor(cfg(), n, gesture, profile(), page);
 
 /** Every edit is saved straight away, like deck.py. */
-const setOwn = (action) => invoke("set_action", { profile: profile(), gesture, button: selected, action });
+const setOwn = (action) => invoke("set_action", { profile: profile(), page, gesture, button: selected, action });
 
 function setKind(type) {
   if (type === "inherit") return setOwn(null);
@@ -146,7 +147,7 @@ function fieldEditor(p, f, i) {
 function valueEditor(kind) {
   const value = own(selected)?.value ?? "";
   if (kind === "none") return null;
-  if (kind === "inherit") return field("Default", el("span", {}, shortLabel(cfg().buttons[buttonKey(selected, gesture)] ?? { type: "none" })));
+  if (kind === "inherit") return field("Default", el("span", {}, shortLabel(cfg().buttons[buttonKey(selected, gesture, page)] ?? { type: "none" })));
   if (kind === "repeat") return [field("Keys", keyRecorder(value, setValue)),
     note(`Press the button to start pressing these keys every ${cfg().repeatSeconds ?? 60}s, again to stop. Change the interval with "repeatSeconds" in deck.json.`),
     accessibilityNote()];
@@ -207,6 +208,15 @@ function profileBar() {
       el("button", { onclick: async () => { const a = await invoke("pick_app"); if (a) addProfile(a); else { menuOpen = false; render(); } } }, "Choose App…")));
 }
 
+/** Pages 1..last, plus the one being set up; "+" opens an empty page after them (it's kept once a button is set). */
+function pageBar() {
+  const count = Math.max(pageCount(cfg(), profile()), page);
+  const go = (p) => { page = p; recording = false; render(); };
+  return el("div", { class: "seg" },
+    Array.from({ length: count }, (_, i) => el("button", { class: i + 1 === page ? "on" : "", onclick: () => go(i + 1) }, `Page ${i + 1}`)),
+    el("button", { title: "Add a page; give a button Next Page (System) to reach it", onclick: () => go(count + 1) }, "+"));
+}
+
 function render() {
   const kind = own(selected)?.type ?? (profile() ? "inherit" : "none");
   const eff = effective(selected);
@@ -216,6 +226,7 @@ function render() {
   const calibrated = Object.values(cfg().pins).includes(selected);
   document.getElementById("root").replaceChildren(
     profileBar(),
+    pageBar(),
     el("div", { class: "seg" }, GESTURES.map(([g, title]) =>
       el("button", { class: g === gesture ? "on" : "", onclick: () => { gesture = g; recording = false; render(); } }, title))),
     deckGrid({

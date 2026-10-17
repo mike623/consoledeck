@@ -16,11 +16,11 @@ live((s) => {
   const app = s.frontApp?.id;
   const cell = (n) => el("div", { class: "cell" }, el("b", {}, `${n}`),
     GESTURES.map(([g, title]) => {
-      const label = shortLabel(actionFor(s.config, n, g, app));
+      const label = shortLabel(actionFor(s.config, n, g, app, s.page));
       return (g === "press" || label !== "–") && el("div", {}, (g === "press" ? "" : title.split(" ")[0] + ": ") + label);
     }));
   document.getElementById("root").replaceChildren(
-    el("h1", {}, s.profileName),
+    el("h1", {}, s.profileName + (s.pageCount > 1 ? ` · Page ${s.page}` : "")),
     el("div", { class: "grid" }, LAYOUT.map((row) => el("div", { class: "row" }, row.map(cell)))),
   );
 });

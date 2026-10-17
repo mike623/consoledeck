@@ -111,12 +111,15 @@ pub fn live_commands(d: &Deck) -> Vec<(Vec<String>, std::path::PathBuf)> {
 pub fn view(d: &Deck) -> MobileView {
     let app = d.profile_id();
     let label = |n, g| {
-        let (a, profile) = d.config.action(n, g, app);
+        let (a, profile) = d.config.action(d.page, n, g, app);
         (short(&a, &d.plugins), profile.is_some())
     };
     MobileView {
         page: &PAGE_VERSION,
-        profile: d.view().profile_name,
+        profile: match d.view() {
+            v if v.page_count > 1 => format!("{} · Page {}", v.profile_name, v.page),
+            v => v.profile_name,
+        },
         front_app: d.front_app.as_ref().map(|a| a.name.clone()),
         status: d.status.clone(),
         last_press: d.last_press.clone(),
@@ -146,9 +149,9 @@ pub fn view(d: &Deck) -> MobileView {
 fn short(a: &Action, plugins: &[Plugin]) -> String {
     let value = a.value.clone().unwrap_or_default();
     match a.kind.as_str() {
-        "system" if value == "editor" || value == "cheatsheet" => return describe(a, plugins), // built in, not in the plugin
+        "system" if ["editor", "cheatsheet", "nextpage", "prevpage"].contains(&value.as_str()) => return describe(a, plugins), // built in, not in the plugin
         // ponytail: "com.apple.keylayout.British" -> "British"; real names need the main thread on macOS
-        "input" => return value.rsplit('.').next().unwrap_or("").into(),
+        "input" if value != "next" => return value.rsplit('.').next().unwrap_or("").into(),
         _ => {}
     }
     let Some(field) = plugins::find(plugins, &a.kind).and_then(|p| p.manifest.fields.first().map(|f| (p, f))) else {

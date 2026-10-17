@@ -227,10 +227,10 @@ fn get_state(app: AppHandle) -> State {
 }
 
 #[tauri::command]
-fn set_action(app: AppHandle, profile: Option<String>, gesture: Gesture, button: u8, action: Option<Action>) {
+fn set_action(app: AppHandle, profile: Option<String>, page: u8, gesture: Gesture, button: u8, action: Option<Action>) {
     update(&app, |d| {
         if d.reload() {
-            d.config.set_action(action, button, gesture, profile.as_deref());
+            d.config.set_action(action, page, button, gesture, profile.as_deref());
             d.save();
         }
     })

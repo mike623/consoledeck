@@ -38,14 +38,21 @@ pub enum Gesture {
 }
 
 impl Gesture {
-    /// Key in deck.json's buttons: "3", "3.long", "3.double". deck.py only knows plain "3".
-    pub fn key(self, n: u8) -> String {
+    /// Key in deck.json's buttons: "3", "3.long", "3.double", and "p2.3", "p2.3.long" on page 2.
+    /// deck.py only knows plain "3".
+    pub fn key(self, page: u8, n: u8) -> String {
+        let p = if page > 1 { format!("p{page}.") } else { String::new() };
         match self {
-            Gesture::Press => n.to_string(),
-            Gesture::Long => format!("{n}.long"),
-            Gesture::Double => format!("{n}.double"),
+            Gesture::Press => format!("{p}{n}"),
+            Gesture::Long => format!("{p}{n}.long"),
+            Gesture::Double => format!("{p}{n}.double"),
         }
     }
+}
+
+/// Page a buttons key is on: "p2.3" is 2, "3" is 1.
+fn page_of(key: &str) -> u8 {
+    key.strip_prefix('p').and_then(|k| k.split('.').next()?.parse().ok()).unwrap_or(1)
 }
 
 /// Per-app overrides. A button missing here falls back to the default buttons.
@@ -118,7 +125,7 @@ impl Config {
 
     /// None removes the button: back to "use default" in a profile, "none" in the default.
     /// A profile that no longer exists is left alone.
-    pub fn set_action(&mut self, action: Option<Action>, n: u8, gesture: Gesture, profile: Option<&str>) {
+    pub fn set_action(&mut self, action: Option<Action>, page: u8, n: u8, gesture: Gesture, profile: Option<&str>) {
         let buttons = match profile {
             None => &mut self.buttons,
             Some(p) => match self.profiles.get_mut(p) {
@@ -127,19 +134,27 @@ impl Config {
             },
         };
         match action {
-            Some(a) => buttons.insert(gesture.key(n), a),
-            None => buttons.remove(&gesture.key(n)),
+            Some(a) => buttons.insert(gesture.key(page, n), a),
+            None => buttons.remove(&gesture.key(page, n)),
         };
     }
 
     /// Front app's profile first, then the default buttons. The name is None when the default was used.
-    pub fn action(&self, n: u8, gesture: Gesture, app: Option<&str>) -> (Action, Option<String>) {
+    /// Pages fall back the same way: page 2 of a profile, then page 2 of the default buttons.
+    pub fn action(&self, page: u8, n: u8, gesture: Gesture, app: Option<&str>) -> (Action, Option<String>) {
+        let key = gesture.key(page, n);
         if let Some(profile) = app.and_then(|a| self.profiles.get(a)) {
-            if let Some(action) = profile.buttons.get(&gesture.key(n)) {
+            if let Some(action) = profile.buttons.get(&key) {
                 return (action.clone(), Some(profile.name.clone()));
             }
         }
-        (self.buttons.get(&gesture.key(n)).cloned().unwrap_or_else(Action::none), None)
+        (self.buttons.get(&key).cloned().unwrap_or_else(Action::none), None)
+    }
+
+    /// Highest page with a button set, in the default buttons or the app's profile.
+    pub fn page_count(&self, app: Option<&str>) -> u8 {
+        let profile = app.and_then(|a| self.profiles.get(a)).map(|p| &p.buttons);
+        self.buttons.keys().chain(profile.into_iter().flat_map(|b| b.keys())).map(|k| page_of(k)).max().unwrap_or(1)
     }
 }
 
@@ -207,8 +222,8 @@ mod tests {
     fn reads_deck_py_config() {
         let c = Config::parse(r#"{"pins": {"D6": 1, "D5": 5}, "buttons": {"1": {"type": "app", "value": "Spotify"}}}"#).unwrap();
         assert_eq!(c.pins["D6"], 1);
-        assert_eq!(c.action(1, Gesture::Press, None).0, Action::new("app", "Spotify"));
-        assert_eq!(c.action(5, Gesture::Press, None).0, Action::none());
+        assert_eq!(c.action(1, 1, Gesture::Press, None).0, Action::new("app", "Spotify"));
+        assert_eq!(c.action(1, 5, Gesture::Press, None).0, Action::none());
         assert!(c.profiles.is_empty());
     }
 
@@ -240,34 +255,48 @@ mod tests {
     #[test]
     fn front_app_profile_overrides_default() {
         let c = profiled();
-        assert_eq!(c.action(1, Gesture::Press, SAFARI), (Action::new("url", "https://x.com"), Some("Safari".into())));
-        assert_eq!(c.action(2, Gesture::Press, SAFARI).0, Action::none()); // explicitly off in Safari
-        assert_eq!(c.action(3, Gesture::Press, SAFARI).1, None); // not in profile: default
-        assert_eq!(c.action(1, Gesture::Press, Some("com.other")).0.value.as_deref(), Some("Spotify"));
-        assert_eq!(c.action(1, Gesture::Press, None).1, None);
+        assert_eq!(c.action(1, 1, Gesture::Press, SAFARI), (Action::new("url", "https://x.com"), Some("Safari".into())));
+        assert_eq!(c.action(1, 2, Gesture::Press, SAFARI).0, Action::none()); // explicitly off in Safari
+        assert_eq!(c.action(1, 3, Gesture::Press, SAFARI).1, None); // not in profile: default
+        assert_eq!(c.action(1, 1, Gesture::Press, Some("com.other")).0.value.as_deref(), Some("Spotify"));
+        assert_eq!(c.action(1, 1, Gesture::Press, None).1, None);
     }
 
     #[test]
     fn editing_profile_buttons() {
         let mut c = profiled();
-        assert_eq!(c.action(3, Gesture::Press, SAFARI).1, None); // inherits
-        c.set_action(Some(Action::new("url", "y.com")), 3, Gesture::Press, SAFARI);
-        assert_eq!(c.action(3, Gesture::Press, SAFARI).0.value.as_deref(), Some("y.com"));
+        assert_eq!(c.action(1, 3, Gesture::Press, SAFARI).1, None); // inherits
+        c.set_action(Some(Action::new("url", "y.com")), 1, 3, Gesture::Press, SAFARI);
+        assert_eq!(c.action(1, 3, Gesture::Press, SAFARI).0.value.as_deref(), Some("y.com"));
         assert_eq!(c.buttons.get("3"), None); // default untouched
-        c.set_action(None, 3, Gesture::Press, SAFARI);
-        assert_eq!(c.action(3, Gesture::Press, SAFARI).1, None);
-        c.set_action(Some(Action::new("url", "z.com")), 1, Gesture::Press, Some("com.gone")); // deleted profile: no-op
+        c.set_action(None, 1, 3, Gesture::Press, SAFARI);
+        assert_eq!(c.action(1, 3, Gesture::Press, SAFARI).1, None);
+        c.set_action(Some(Action::new("url", "z.com")), 1, 1, Gesture::Press, Some("com.gone")); // deleted profile: no-op
         assert!(!c.profiles.contains_key("com.gone"));
     }
 
     #[test]
     fn gesture_keys_inherit_like_presses() {
         let mut c = profiled();
-        assert_eq!(c.action(1, Gesture::Long, SAFARI).0.value.as_deref(), Some("Music"));
-        c.set_action(Some(Action::none()), 1, Gesture::Long, SAFARI);
-        assert_eq!(c.action(1, Gesture::Long, SAFARI).0, Action::none());
+        assert_eq!(c.action(1, 1, Gesture::Long, SAFARI).0.value.as_deref(), Some("Music"));
+        c.set_action(Some(Action::none()), 1, 1, Gesture::Long, SAFARI);
+        assert_eq!(c.action(1, 1, Gesture::Long, SAFARI).0, Action::none());
         assert_eq!(c.profiles["com.apple.Safari"].buttons.get("1.long"), Some(&Action::none()));
-        assert_eq!(c.action(1, Gesture::Double, None).0, Action::none());
+        assert_eq!(c.action(1, 1, Gesture::Double, None).0, Action::none());
+    }
+
+    #[test]
+    fn pages_have_their_own_buttons_and_inherit_like_page_one() {
+        let mut c = profiled();
+        assert_eq!((c.page_count(None), c.page_count(SAFARI)), (1, 1));
+        c.set_action(Some(Action::new("url", "p2.com")), 2, 1, Gesture::Long, None);
+        c.set_action(Some(Action::new("url", "s3.com")), 3, 4, Gesture::Press, SAFARI);
+        assert_eq!(c.buttons["p2.1.long"], Action::new("url", "p2.com"));
+        assert_eq!((c.page_count(None), c.page_count(SAFARI), c.page_count(Some("com.other"))), (2, 3, 2));
+        assert_eq!(c.action(2, 1, Gesture::Long, SAFARI).0.value.as_deref(), Some("p2.com")); // from default page 2
+        assert_eq!(c.action(2, 1, Gesture::Press, None).0, Action::none()); // page 1's button 1 isn't on page 2
+        assert_eq!(c.action(3, 4, Gesture::Press, None).0, Action::none());
+        assert_eq!(page_of("p12.3.double"), 12);
     }
 
     #[test]

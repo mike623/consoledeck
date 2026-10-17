@@ -32,6 +32,8 @@ pub struct View {
     pub calibration_note: String,
     pub next_to_calibrate: Option<u8>,
     pub repeating: Option<String>,
+    pub page: u8,
+    pub page_count: u8,
 }
 
 pub struct Deck {
@@ -46,6 +48,8 @@ pub struct Deck {
     /// Key combo a "repeat" action is auto-pressing (keeps idle-kicking streams like Boosteroid alive).
     pub repeating: Option<String>,
     repeat_at: Option<Instant>,
+    /// Page of buttons in use, from 1; back to 1 when the front app changes.
+    pub page: u8,
     held: HashSet<u8>,
     cheat_sheet: bool,
     cheat_holder: Option<u8>, // button whose release hides it
@@ -76,6 +80,7 @@ impl Deck {
             calibration_note: String::new(),
             repeating: None,
             repeat_at: None,
+            page: 1,
             held: HashSet::new(),
             cheat_sheet: false,
             cheat_holder: None,
@@ -148,6 +153,8 @@ impl Deck {
             calibration_note: self.calibration_note.clone(),
             next_to_calibrate: self.next_to_calibrate(),
             repeating: self.repeating.clone(),
+            page: self.page,
+            page_count: self.config.page_count(self.profile_id()),
         }
     }
 
@@ -161,6 +168,7 @@ impl Deck {
         self.recent_apps.insert(0, app.clone());
         self.recent_apps.truncate(12);
         self.front_app = Some(app);
+        self.page = 1;
         log::info!("Front app {}", self.front_app.as_ref().unwrap().id);
         true
     }
@@ -240,7 +248,7 @@ impl Deck {
         self.gestures.long_press = Duration::from_millis(self.config.long_press_ms.unwrap_or(500));
         self.gestures.double_gap = Duration::from_millis(self.config.double_press_ms.unwrap_or(300));
         let app = self.profile_id();
-        let has = |g| self.config.action(n, g, app).0.kind != "none";
+        let has = |g| self.config.action(self.page, n, g, app).0.kind != "none";
         let uses = Uses { long: has(Gesture::Long), double: has(Gesture::Double) };
         if let Some(g) = self.gestures.down(n, uses, now) {
             self.fire(n, g, now);
@@ -266,7 +274,7 @@ impl Deck {
     }
 
     fn fire(&mut self, n: u8, gesture: Gesture, now: Instant) {
-        let (action, profile) = self.config.action(n, gesture, self.profile_id());
+        let (action, profile) = self.config.action(self.page, n, gesture, self.profile_id());
         let what = match gesture {
             Gesture::Press => "",
             Gesture::Long => " long press",
@@ -279,6 +287,7 @@ impl Deck {
             ("repeat", v) => self.toggle_repeat(v.unwrap_or(""), now),
             ("system", Some("editor")) => self.effects.push(Effect::ShowWindow("actions")),
             ("system", Some("cheatsheet")) => self.show_cheat_sheet(n, gesture == Gesture::Long, now),
+            ("system", Some(v @ ("nextpage" | "prevpage"))) => self.turn_page(v == "nextpage"),
             _ => self.effects.push(Effect::Run(action)),
         }
     }
@@ -302,6 +311,14 @@ impl Deck {
         if std::mem::take(&mut self.cheat_sheet) {
             self.effects.push(Effect::HideCheatSheet);
         }
+    }
+
+    /// Wraps around: next on the last page is page 1.
+    fn turn_page(&mut self, next: bool) {
+        let count = self.config.page_count(self.profile_id());
+        let page = self.page.min(count); // the page may have been emptied since
+        self.page = if next { page % count + 1 } else { (page + count - 2) % count + 1 };
+        self.last_press = format!("{} · page {}/{count}", self.last_press, self.page);
     }
 
     fn repeat_every(&self) -> Duration {
@@ -329,6 +346,8 @@ pub fn describe(action: &Action, plugins: &[Plugin]) -> String {
         ("repeat", _) => format!("repeat {value}"),
         ("system", "editor") => "Open ConsoleDeck Editor".into(),
         ("system", "cheatsheet") => "Show Cheat Sheet".into(),
+        ("system", "nextpage") => "Next Page".into(),
+        ("system", "prevpage") => "Previous Page".into(),
         (kind, _) => plugins::find(plugins, kind).map_or(format!("{kind} {value} (plugin not installed)"), |p| p.manifest.describe(action)),
     }
 }
@@ -481,6 +500,29 @@ mod tests {
         }
         assert!(saved.lock().unwrap().is_none());
         assert_eq!(d.view().calibration_note, "deck.json is broken; fix it and calibrate again");
+    }
+
+    #[test]
+    fn page_buttons_turn_pages_and_wrap() {
+        let (mut d, _) = deck(r#"{"pins": {"D2": 1, "D3": 2}, "buttons": {
+            "1": {"type": "system", "value": "nextpage"}, "2": {"type": "url", "value": "one.com"},
+            "p2.2": {"type": "url", "value": "two.com"},
+            "p3.1": {"type": "system", "value": "prevpage"}, "p3.2": {"type": "system", "value": "nextpage"}}}"#);
+        let now = Instant::now();
+        assert_eq!(press(&mut d, "D2", now), []);
+        assert_eq!(d.view().page, 2);
+        assert_eq!(d.last_press, "Last: button 1 → Next Page · page 2/3");
+        assert_eq!(press(&mut d, "D3", now), [Effect::Run(Action::new("url", "two.com"))]);
+        press(&mut d, "D2", now); // nothing on page 2 button 1: stays
+        assert_eq!(d.page, 2);
+        d.page = 3;
+        press(&mut d, "D3", now); // next on the last page wraps
+        assert_eq!(d.page, 1);
+        d.page = 3;
+        press(&mut d, "D2", now);
+        assert_eq!(d.page, 2);
+        d.set_front_app(app("com.apple.Safari", 1));
+        assert_eq!(d.page, 1);
     }
 
     #[test]
