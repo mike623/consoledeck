@@ -3,10 +3,11 @@
 <body><div id="root" class="stack"></div>
 <script src="common.js"></script>
 <script>
-const KINDS = [["none", "None"], ["url", "Open URL"], ["app", "Open App"], ["key", "Press Keys"], ["repeat", "Repeat Keys"],
-  ["type", "Type Text"], ["password", "Type Password"], ["system", "System"], ["input", "Input Language"], ["script", "Run Script"]];
-/** Key and Type actions would land in this window, so Test is off for them. */
-const TYPES_INTO_FRONT_APP = ["key", "repeat", "type", "password"];
+/** Built into the app; every other action type is a plugin. */
+const CORE_KINDS = [["none", "None"], ["repeat", "Repeat Keys"]];
+/** Runs that land in the app in front, so testing them from this window would type into it. */
+const TYPES_INTO_FRONT_APP = ["keys", "type", "password"];
+const NEEDS_ACCESSIBILITY = [...TYPES_INTO_FRONT_APP, "media"];
 
 let S;                 // latest state from the app
 let selected = 1;
@@ -14,12 +15,9 @@ let gesture = "press";
 let profileId;         // undefined until first render; null = Default
 let recording = false;
 let menuOpen = false;
-let vpns = null;       // Tunnelblick configuration names; null when it isn't installed
-
-/** Rechecked on focus: importing a config finishes in Tunnelblick's own windows. */
-const loadVpns = async () => { vpns = await invoke("vpn_configs"); if (S) render(); };
-loadVpns();
-window.addEventListener("focus", loadVpns);
+/** Select options from plugin commands, by "plugin.field"; refetched on focus (an import may finish in another app). */
+let fetched = {};
+window.addEventListener("focus", () => { fetched = {}; if (S) render(); });
 
 const cfg = () => S.config;
 /** Selected profile, or null for Default (also when the profile was deleted elsewhere). */
@@ -43,6 +41,14 @@ function setKind(type) {
 
 const setValue = (value) => setOwn({ ...(own(selected) ?? { type: "none" }), value });
 
+/** The first field is stored as value (what deck.py reads), the others in values. */
+const getField = (i, f) => (i === 0 ? own(selected)?.value : own(selected)?.values?.[f.id]) ?? "";
+function setField(i, f, v) {
+  if (i === 0) return setValue(v);
+  const a = own(selected) ?? { type: "none" };
+  setOwn({ ...a, values: { ...(a.values ?? {}), [f.id]: v } });
+}
+
 async function addProfile(app) {
   menuOpen = false;
   await invoke("add_profile", { id: app.id, name: app.name });
@@ -51,6 +57,7 @@ async function addProfile(app) {
 }
 
 // Recording: the next key press (with modifiers) becomes the combo; swallowed so ⌘W etc. don't act on the window.
+let recorded = null; // where the combo goes
 window.addEventListener("keydown", (e) => {
   if (!recording) return;
   e.preventDefault();
@@ -58,15 +65,14 @@ window.addEventListener("keydown", (e) => {
   const combo = comboFromEvent(e);
   if (combo) {
     recording = false;
-    setValue(combo);
+    recorded(combo);
   }
 }, true);
 
-function keyRecorder() {
-  const v = own(selected)?.value ?? "";
+function keyRecorder(value, set) {
   return el("button", { class: "btn", style: "font-family: ui-monospace, monospace",
-    onclick: () => { recording = !recording; render(); } },
-    recording ? "Press keys…" : v ? comboSymbols(v) : "Record");
+    onclick: () => { recording = !recording; recorded = set; render(); } },
+    recording ? "Press keys…" : value ? comboSymbols(value) : "Record");
 }
 
 function accessibilityNote() {
@@ -75,57 +81,92 @@ function accessibilityNote() {
     el("button", { class: "btn", onclick: () => invoke("allow_accessibility") }, "Allow…"));
 }
 
-const note = (text) => el("div", { class: "small muted" }, text);
+const note = (text) => text && el("div", { class: "small muted" }, text);
 const field = (label, ...control) => el("div", { class: "field" }, el("label", {}, label), el("div", {}, ...control));
-const textInput = (attrs) => el("input", { type: "text", value: own(selected)?.value ?? "", onchange: (e) => setValue(e.target.value), ...attrs });
-const textArea = (attrs) => {
-  const t = el("textarea", { onchange: (e) => setValue(e.target.value), ...attrs });
-  t.value = own(selected)?.value ?? "";
+const textInput = (value, set, attrs) => el("input", { type: "text", value, onchange: (e) => set(e.target.value), ...attrs });
+const textArea = (value, set, attrs) => {
+  const t = el("textarea", { onchange: (e) => set(e.target.value), ...attrs });
+  t.value = value;
   return t;
 };
 
-function valueEditor(kind) {
-  const value = own(selected)?.value ?? "";
-  switch (kind) {
-    case "inherit": return field("Default", el("span", {}, shortLabel(cfg().buttons[buttonKey(selected, gesture)] ?? { type: "none" })));
-    case "url": return field("URL", textInput({ placeholder: "https://example.com" }));
-    case "app": return field("App", el("div", { class: "bar" }, textInput({ placeholder: IS_MAC ? "Safari" : "notepad" }),
-      el("button", { class: "btn", onclick: async () => { const a = await invoke("pick_app"); if (a) setValue(a.open); } }, "Choose…")));
-    case "key": return [field("Keys", keyRecorder()), accessibilityNote()];
-    case "repeat": return [field("Keys", keyRecorder()),
-      note(`Press the button to start pressing these keys every ${cfg().repeatSeconds ?? 60}s, again to stop. Change the interval with "repeatSeconds" in deck.json.`),
-      accessibilityNote()];
-    case "type": return [field("Text", textArea({ rows: 3, placeholder: "Typed into the app in front" })), accessibilityNote()];
+/** A select's options: listed in the manifest, input languages, or printed by the plugin's command. */
+function selectOptions(p, f) {
+  const listed = (f.options ?? []).filter(forThisOS).map((o) => [o.value, o.label]);
+  if (!f.optionsFrom) return listed;
+  if (f.optionsFrom[0] === "inputSources") return listed.concat(Object.entries(names.input));
+  const key = `${p.id}.${f.id}`;
+  if (!fetched[key]) {
+    fetched[key] = { list: null };
+    invoke("plugin_options", { id: p.id, field: f.id }).then((list) => { fetched[key].list = list; render(); });
+  }
+  return listed.concat(fetched[key].list ?? []);
+}
+
+function fieldEditor(p, f, i) {
+  const value = getField(i, f);
+  const set = (v) => setField(i, f, v);
+  const mono = f.monospace ? { style: "font-family: ui-monospace, Consolas, monospace" } : {};
+  let control;
+  switch (f.type) {
+    case "textarea": control = textArea(value, set, { rows: f.monospace ? 4 : 3, placeholder: f.placeholder ?? "", ...mono }); break;
+    case "app": control = el("div", { class: "bar" }, textInput(value, set, { placeholder: f.placeholder ?? "" }),
+      el("button", { class: "btn", onclick: async () => { const a = await invoke("pick_app"); if (a) set(a.open); } }, "Choose…")); break;
+    case "keys": control = keyRecorder(value, set); break;
     case "password": {
       const input = el("input", { type: "password", placeholder: value ? "Saved, type to replace" : "Not set",
         onkeydown: (e) => e.key === "Enter" && save() });
       const save = async () => {
         const sealed = input.value && await invoke("seal_password", { password: input.value });
-        if (sealed) setValue(sealed);
+        if (sealed) set(sealed);
       };
-      return [field("Password", el("div", { class: "bar" }, input, el("button", { class: "btn", onclick: save }, "Save"))),
-        note("Saved encrypted in deck.json (key in secret.key beside it) and shown masked."), accessibilityNote()];
+      control = el("div", { class: "bar" }, input, el("button", { class: "btn", onclick: save }, "Save"));
+      break;
     }
-    case "system": return [field("Action", el("select", { onchange: (e) => setValue(e.target.value) },
-        !value && el("option", { value: "" }, "Choose…"),
-        Object.entries(names.system).map(([id, label]) => el("option", { value: id, selected: id === value }, label)))),
-      value === "lock" && accessibilityNote(),
-      value === "cheatsheet" && note("Shows every button's actions over the app in front. Set it as a Long Press: it stays up while you hold the button.")];
-    case "input": return field("Language", el("select", { onchange: (e) => setValue(e.target.value) },
-      !value ? el("option", { value: "" }, "Choose…")
-        : !names.input[value] && el("option", { value, selected: true }, `${value} (not enabled)`),
-      Object.entries(names.input).map(([id, name]) => el("option", { value: id, selected: id === value }, name))));
-    case "vpn": return [field("Tunnelblick VPN", el("div", { class: "bar" },
-        el("select", { class: "grow", onchange: (e) => setValue(e.target.value) },
-          !value ? el("option", { value: "" }, "Choose…")
-            : !vpns?.includes(value) && el("option", { value, selected: true }, `${value} (not in Tunnelblick yet)`),
-          (vpns ?? []).map((n) => el("option", { value: n, selected: n === value }, n))),
-        el("button", { class: "btn", onclick: async () => { const n = await invoke("import_vpn"); if (n) setValue(n); } }, "Import .ovpn…"))),
-      note("Press connects, press again disconnects. Connect once from Tunnelblick's menu and tick Save in Keychain so the button doesn't ask for the username and password.")];
-    case "script": return field("Command", textArea({ rows: 4, placeholder: IS_MAC ? "~/bin/thing.sh" : "C:\\tools\\thing.bat",
-      style: "font-family: ui-monospace, Consolas, monospace" }));
-    default: return null;
+    case "select": {
+      const options = selectOptions(p, f);
+      control = el("select", { class: "grow", onchange: (e) => set(e.target.value) },
+        !value ? el("option", { value: "" }, "Choose…")
+          : !options.some(([v]) => v === value) && el("option", { value, selected: true }, `${value} (not available)`),
+        options.map(([v, label]) => el("option", { value: v, selected: v === value }, label)));
+      break;
+    }
+    default: control = textInput(value, set, { placeholder: f.placeholder ?? "", ...mono });
   }
+  if (f.button) {
+    control = el("div", { class: "bar" }, control, el("button", { class: "btn", onclick: async () => {
+      const v = await invoke("plugin_button", { id: p.id, field: f.id });
+      fetched = {};
+      if (v) set(v); else render();
+    } }, f.button.label));
+  }
+  return field(f.label, control);
+}
+
+function valueEditor(kind) {
+  const value = own(selected)?.value ?? "";
+  if (kind === "none") return null;
+  if (kind === "inherit") return field("Default", el("span", {}, shortLabel(cfg().buttons[buttonKey(selected, gesture)] ?? { type: "none" })));
+  if (kind === "repeat") return [field("Keys", keyRecorder(value, setValue)),
+    note(`Press the button to start pressing these keys every ${cfg().repeatSeconds ?? 60}s, again to stop. Change the interval with "repeatSeconds" in deck.json.`),
+    accessibilityNote()];
+  const p = pluginFor(kind);
+  if (!p) return el("div", { class: "bar warn" }, el("span", { class: "grow" }, `The ${kind} plugin isn't installed, so this button does nothing.`),
+    el("button", { class: "btn", onclick: () => invoke("show_plugins") }, "Plugins…"));
+  const run = runOf(p, own(selected) ?? {});
+  const option = p.fields[0]?.options?.find((o) => o.value === value);
+  return [...p.fields.map((f, i) => fieldEditor(p, f, i)), note(option?.note), note(p.note),
+    run && NEEDS_ACCESSIBILITY.some((k) => k in run) && accessibilityNote()];
+}
+
+/** Action types for the menu: the core ones and every installed plugin, plus the current one if its plugin is gone. */
+function kinds(current) {
+  const list = Object.values(plugins).map((p) => [p.id, p.name]);
+  if (!plugins.system) list.push(["system", "System"]); // the editor and cheat sheet are always there
+  list.sort((a, b) => a[1].localeCompare(b[1]));
+  const all = [CORE_KINDS[0], ...list, CORE_KINDS[1]];
+  if (!["inherit", "none", "repeat"].includes(current) && !pluginFor(current)) all.push([current, `${current} (not installed)`]);
+  return all;
 }
 
 function profileBar() {
@@ -152,7 +193,8 @@ function profileBar() {
 function render() {
   const kind = own(selected)?.type ?? (profile() ? "inherit" : "none");
   const eff = effective(selected);
-  const typesIntoFrontApp = TYPES_INTO_FRONT_APP.includes(eff.type);
+  const effPlugin = pluginFor(eff.type);
+  const typesIntoFrontApp = eff.type === "repeat" || TYPES_INTO_FRONT_APP.some((k) => k in (osRun(effPlugin?.run) ?? {}));
   const gestureTitle = GESTURES.find(([g]) => g === gesture)[1];
   const calibrated = Object.values(cfg().pins).includes(selected);
   document.getElementById("root").replaceChildren(
@@ -168,12 +210,13 @@ function render() {
     field(gesture === "press" ? `Button ${selected} does` : `${gestureTitle} ${selected} does`,
       el("select", { onchange: (e) => setKind(e.target.value) },
         profile() && el("option", { value: "inherit", selected: kind === "inherit" }, "Use Default"),
-        KINDS.concat(vpns || kind === "vpn" ? [["vpn", "Toggle VPN"]] : []).map(([k, label]) => el("option", { value: k, selected: k === kind }, label)))),
+        kinds(kind).map(([k, label]) => el("option", { value: k, selected: k === kind }, label)))),
     ...[valueEditor(kind)].flat().filter(Boolean),
     el("div", { class: "bar" },
+      el("button", { class: "btn", title: "Install and manage action plugins", onclick: () => invoke("show_plugins") }, "Plugins…"),
       !calibrated && el("span", { class: "warn" }, "⚠ Not calibrated yet"),
       el("span", { class: "grow small muted" }, gesture === "press" ? "" : "Buttons with long or double actions wait a moment to tell presses apart."),
-      el("button", { class: "btn", disabled: !eff.value || typesIntoFrontApp,
+      el("button", { class: "btn", disabled: !eff.value || typesIntoFrontApp || (eff.type !== "repeat" && !effPlugin),
         title: typesIntoFrontApp ? "Goes to the app in front; press the deck button in that app to test" : "",
         onclick: () => invoke("test_action", { action: eff }) }, "Test")),
   );

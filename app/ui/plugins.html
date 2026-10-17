@@ -1,0 +1,183 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>ConsoleDeck Plugins</title><link rel="stylesheet" href="style.css">
+<style>
+  .item { display: flex; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .item .grow { flex: 1; min-width: 0; }
+  .item b { font-weight: 600; }
+  .list { margin-top: 6px; }
+  .empty { padding: 30px 0; text-align: center; }
+</style></head>
+<body><div id="root" class="stack"></div>
+<script src="common.js"></script>
+<script>
+const REGISTRY = "https://raw.githubusercontent.com/mike623/consoledeck-plugins/main";
+const SOURCE = "https://github.com/mike623/consoledeck-plugins/tree/main/plugins";
+
+let tab = "installed";
+let query = "";
+let index = null;      // registry plugins for this OS; null while loading
+let indexError = "";
+let busy = {};         // id -> "Installing…" etc.
+let message = "";
+
+async function loadIndex() {
+  indexError = "";
+  try {
+    const r = await fetch(`${REGISTRY}/index.json?t=${Date.now()}`, { cache: "no-store" });
+    if (!r.ok) throw new Error(`registry answered ${r.status}`);
+    index = (await r.json()).plugins.filter(forThisOS);
+  } catch (e) {
+    index = [];
+    indexError = `Cannot reach the plugin registry (${e.message}). Installed plugins still work.`;
+  }
+  render();
+}
+
+/** "1.10.0" > "1.9.2" */
+function newer(a, b) {
+  const pa = a.split(".").map(Number), pb = b.split(".").map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) > (pb[i] ?? 0);
+  }
+  return false;
+}
+
+const latest = (id) => index?.find((e) => e.id === id);
+const hasUpdate = (p) => latest(p.id) && newer(latest(p.id).version, p.version);
+
+/** Every program a plugin can start; shown before installing (same as the registry's tools/build_index.py). */
+function commandsOf(m) {
+  const of = (r) => !r ? [] : [...(r.exec ? [r.exec] : []), ...of(r.mac), ...of(r.windows)];
+  const out = of(m.run);
+  for (const f of m.fields ?? []) {
+    for (const o of f.options ?? []) out.push(...of(o.run));
+    if (f.optionsFrom && f.optionsFrom[0] !== "inputSources") out.push(f.optionsFrom);
+    if (f.button) out.push(f.button.exec);
+  }
+  return out.map((c) => c.join(" "));
+}
+const runsShell = (m) => JSON.stringify(m).includes('"shell"');
+
+function base64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+async function fetchFile(id, path) {
+  const url = `${REGISTRY}/plugins/${encodeURIComponent(id)}/${path.split("/").map(encodeURIComponent).join("/")}?t=${Date.now()}`;
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error(`${path}: ${r.status}`);
+  return r.arrayBuffer();
+}
+
+/** Install or update. Asks first when the plugin runs commands (again on update only if they changed). */
+async function install(entry, quiet = false) {
+  busy[entry.id] = plugins[entry.id] ? "Updating…" : "Installing…";
+  message = "";
+  render();
+  try {
+    const manifestBytes = await fetchFile(entry.id, "plugin.json");
+    const manifest = JSON.parse(new TextDecoder().decode(manifestBytes));
+    const cmds = commandsOf(manifest);
+    const old = plugins[entry.id];
+    const changed = !old || JSON.stringify(commandsOf(old)) !== JSON.stringify(cmds) || runsShell(old) !== runsShell(manifest);
+    if ((cmds.length || runsShell(manifest)) && changed) {
+      const lines = [
+        `${manifest.name} ${manifest.version} runs these commands on your computer, as you:`, "",
+        ...cmds.map((c) => "  " + c),
+        runsShell(manifest) ? "  and the command lines you type into its buttons" : null,
+        "", `Source: ${SOURCE}/${entry.id}`, "", old ? "Its commands changed since the version you have. Update?" : "Install it?",
+      ];
+      if (!confirm(lines.filter((l) => l !== null).join("\n"))) return;
+    }
+    const files = { "plugin.json": base64(manifestBytes) };
+    for (const path of entry.files.filter((f) => f !== "plugin.json")) files[path] = base64(await fetchFile(entry.id, path));
+    const version = await invoke("install_plugin", { id: entry.id, files });
+    if (!quiet) message = `${manifest.name} ${version} installed`;
+  } catch (e) {
+    message = `${entry.name}: ${e.message ?? e}`;
+  } finally {
+    delete busy[entry.id];
+    render();
+  }
+}
+
+async function remove(p) {
+  const using = usedBy(p.id);
+  const warn = using ? `\n\n${using} button action${using > 1 ? "s use" : " uses"} it and will do nothing until it's installed again.` : "";
+  if (!confirm(`Remove ${p.name}?${warn}`)) return;
+  try {
+    await invoke("remove_plugin", { id: p.id });
+    message = `${p.name} removed`;
+  } catch (e) {
+    message = `${p.name}: ${e}`;
+  }
+  render();
+}
+
+let S;
+/** How many button actions (any profile, any gesture) use this plugin. */
+function usedBy(id) {
+  if (!S) return 0;
+  const all = [cfg().buttons, ...Object.values(cfg().profiles).map((p) => p.buttons)];
+  return all.flatMap(Object.values).filter((a) => a.type === id).length;
+}
+const cfg = () => S.config;
+
+const matches = (p) => !query || `${p.name} ${p.description ?? ""} ${p.id}`.toLowerCase().includes(query.toLowerCase());
+
+function row(p, ...buttons) {
+  return el("div", { class: "item" },
+    el("div", { class: "grow" },
+      el("div", {}, el("b", {}, p.name), el("span", { class: "small muted" }, `  ${p.version}`)),
+      el("div", { class: "small muted" }, p.description ?? "")),
+    ...buttons);
+}
+
+function installedList() {
+  const list = Object.values(plugins).filter(matches).sort((a, b) => a.name.localeCompare(b.name));
+  if (!list.length) return el("div", { class: "empty muted" }, query ? "No installed plugin matches" : "No plugins installed. Find some in Browse.");
+  return list.map((p) => row(p,
+    hasUpdate(p) && el("button", { class: "btn primary", disabled: !!busy[p.id], onclick: () => install(latest(p.id)) },
+      busy[p.id] ?? `Update to ${latest(p.id).version}`),
+    el("button", { class: "btn", disabled: !!busy[p.id], onclick: () => remove(p) }, "Remove")));
+}
+
+function browseList() {
+  if (index === null) return el("div", { class: "empty muted" }, "Loading…");
+  const list = index.filter(matches).sort((a, b) => a.name.localeCompare(b.name));
+  if (!list.length) return el("div", { class: "empty muted" }, indexError ? "" : "No plugin matches");
+  return list.map((e) => {
+    const have = plugins[e.id];
+    const label = busy[e.id] ?? (!have ? "Install" : newer(e.version, have.version) ? `Update to ${e.version}` : "Installed");
+    return row(e, el("button", { class: have && label === "Installed" ? "btn" : "btn primary",
+      disabled: !!busy[e.id] || label === "Installed", onclick: () => install(e) }, label));
+  });
+}
+
+function render() {
+  const updates = Object.values(plugins).filter(hasUpdate);
+  const search = el("input", { type: "text", placeholder: "Search plugins", value: query,
+    oninput: (e) => { query = e.target.value; render(); document.getElementById("q").focus(); }, id: "q" });
+  document.getElementById("root").replaceChildren(
+    el("div", { class: "seg" }, [["installed", `Installed (${Object.keys(plugins).length})`], ["browse", "Browse"]].map(([t, title]) =>
+      el("button", { class: t === tab ? "on" : "", onclick: () => { tab = t; render(); } }, title))),
+    el("div", { class: "bar" }, search,
+      tab === "installed" && updates.length > 0 && el("button", { class: "btn primary",
+        disabled: Object.keys(busy).length > 0, onclick: async () => { for (const p of updates) await install(latest(p.id), true); message = "Plugins updated"; render(); } },
+        `Update All (${updates.length})`),
+      el("button", { class: "btn", title: "Check the registry again", onclick: () => { index = null; render(); loadIndex(); } }, "↻")),
+    indexError && el("div", { class: "small warn" }, indexError),
+    message && el("div", { class: "small" }, message),
+    el("div", { class: "list" }, tab === "installed" ? installedList() : browseList()),
+  );
+  const q = document.getElementById("q");
+  q.setSelectionRange(q.value.length, q.value.length);
+}
+
+live((state) => { S = state; render(); });
+loadIndex();
+window.addEventListener("focus", () => { if (!Object.keys(busy).length) loadIndex(); });
+</script></body></html>

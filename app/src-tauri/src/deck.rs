@@ -4,6 +4,7 @@
 use crate::config::{Action, Config, Gesture, POSITIONS};
 use crate::gestures::{Gestures, Uses};
 use crate::platform::FrontApp;
+use crate::plugins::{self, Plugin};
 use serde::Serialize;
 use std::collections::{BTreeMap, HashSet};
 use std::time::{Duration, Instant};
@@ -54,6 +55,7 @@ pub struct Deck {
     load: Box<dyn Fn() -> Result<Config, String> + Send>,
     save: Box<dyn Fn(&Config) -> Result<(), String> + Send>,
     effects: Vec<Effect>,
+    pub plugins: Vec<Plugin>,
 }
 
 impl Deck {
@@ -81,6 +83,7 @@ impl Deck {
             load: Box::new(load),
             save: Box::new(save),
             effects: vec![],
+            plugins: vec![],
         };
         deck.reload();
         deck
@@ -259,7 +262,7 @@ impl Deck {
             Gesture::Long => " long press",
             Gesture::Double => " double press",
         };
-        let summary = format!("button {n}{what} → {}{}", profile.map(|p| format!("{p}: ")).unwrap_or_default(), describe(&action));
+        let summary = format!("button {n}{what} → {}{}", profile.map(|p| format!("{p}: ")).unwrap_or_default(), describe(&action, &self.plugins));
         log::info!("{summary}");
         self.last_press = format!("Last: {summary}");
         match (action.kind.as_str(), action.value.as_deref()) {
@@ -309,14 +312,14 @@ impl Deck {
 }
 
 /// One line for the tray and log.
-pub fn describe(action: &Action) -> String {
+pub fn describe(action: &Action, plugins: &[Plugin]) -> String {
     let value = action.value.as_deref().unwrap_or("");
-    match action.kind.as_str() {
-        "none" => "no action".into(),
-        "type" => format!("type \"{}\"", value.chars().take(30).collect::<String>()),
-        "password" => "type password".into(),
-        "system" => crate::platform::system_label(value).map_or(format!("system {value}"), str::to_string),
-        kind => format!("{kind} {value}"),
+    match (action.kind.as_str(), value) {
+        ("none", _) => "no action".into(),
+        ("repeat", _) => format!("repeat {value}"),
+        ("system", "editor") => "Open ConsoleDeck Editor".into(),
+        ("system", "cheatsheet") => "Show Cheat Sheet".into(),
+        (kind, _) => plugins::find(plugins, kind).map_or(format!("{kind} {value} (plugin not installed)"), |p| p.manifest.describe(action)),
     }
 }
 
@@ -357,7 +360,7 @@ mod tests {
         assert_eq!(press(&mut d, "D2", now), [Effect::Run(Action::new("url", "a.com"))]);
         d.set_front_app(app("com.apple.Safari", 1));
         assert_eq!(press(&mut d, "D2", now), [Effect::Run(Action::new("url", "s.com"))]);
-        assert_eq!(d.last_press, "Last: button 1 → Safari: url s.com");
+        assert_eq!(d.last_press, "Last: button 1 → Safari: url s.com (plugin not installed)");
         assert_eq!(press(&mut d, "D9", now), []);
         assert_eq!(d.last_press, "D9: not calibrated");
     }
@@ -478,8 +481,15 @@ mod tests {
 
     #[test]
     fn describes_actions() {
-        assert_eq!(describe(&Action::new("system", "restart")), "Restart…");
-        assert_eq!(describe(&Action::new("password", "xyz")), "type password");
-        assert_eq!(describe(&Action::none()), "no action");
+        let plugins: Vec<Plugin> = [
+            r#"{"id": "system", "name": "System", "version": "1", "fields": [{"id": "action", "label": "Action", "type": "select",
+                "options": [{"value": "restart", "label": "Restart…", "run": {"exec": ["x"]}}]}]}"#,
+            r#"{"id": "password", "name": "Type Password", "version": "1", "fields": [{"id": "p", "label": "P", "type": "password"}], "run": {"password": "{p}"}}"#,
+        ].iter().map(|j| Plugin { manifest: plugins::Manifest::parse(j).unwrap(), dir: Default::default() }).collect();
+        assert_eq!(describe(&Action::new("system", "restart"), &plugins), "Restart…");
+        assert_eq!(describe(&Action::new("system", "cheatsheet"), &plugins), "Show Cheat Sheet");
+        assert_eq!(describe(&Action::new("password", "xyz"), &plugins), "Type Password");
+        assert_eq!(describe(&Action::new("url", "x.com"), &plugins), "url x.com (plugin not installed)");
+        assert_eq!(describe(&Action::none(), &plugins), "no action");
     }
 }

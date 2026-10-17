@@ -61,9 +61,10 @@ Download from [Releases](https://github.com/mike623/consoledeck/releases) (or th
 > - **macOS** blocks the first launch. Either run `xattr -dr com.apple.quarantine /Applications/ConsoleDeck.app`, or try to open it once and then click **Open Anyway** in System Settings → Privacy & Security.
 > - **Windows** SmartScreen warns about an unknown publisher. Click **More info** → **Run anyway**.
 
-To build it yourself you need [Rust](https://rustup.rs) and Node.js (for the Tauri CLI):
+To build it yourself you need [Rust](https://rustup.rs) and Node.js (for the Tauri CLI), and the bundled plugins:
 
 ```bash
+git submodule update --init   # app/plugins: the plugins shipped inside the app
 app/build.sh           # builds the app (Mac) or installer (Windows) into app/src-tauri/target/release/bundle
 app/build.sh install   # Mac: also copies it to ~/Applications and launches it
 cd app/src-tauri && cargo run    # run from source
@@ -83,6 +84,11 @@ On a Mac, `build.sh` signs with your Apple Development identity when it finds on
 
 ## Actions
 
+Every action except Repeat Keys, Open ConsoleDeck Editor and Show Cheat Sheet is a plugin from
+[consoledeck-plugins](https://github.com/mike623/consoledeck-plugins). The ones below ship inside the app and are
+installed on first launch; **Plugins…** (tray menu, or the Actions window) browses the registry, installs, updates
+and removes them. Plugins that run commands show them and ask before installing. To write one, see that repo's README.
+
 | Type | What it does |
 | --- | --- |
 | Open URL | Opens a link in the default browser |
@@ -93,6 +99,7 @@ On a Mac, `build.sh` signs with your Apple Development identity when it finds on
 | Type Text | Types a string, newlines become Return |
 | Type Password | Types a password. Stored AES-256-GCM encrypted in `deck.json` (key in `secret.key` beside it) and shown masked |
 | Input Language | Switches to a specific input source / keyboard language |
+| Toggle VPN (Mac) | Connects a [Tunnelblick](https://tunnelblick.net) VPN, or disconnects it when it's up |
 | System | Lock Screen, Sleep, Turn Display Off, Screen Saver, Next Input Language, Mute, Volume Up/Down, Log Out, Restart, Shut Down, Open ConsoleDeck Editor, Show Cheat Sheet (hold to see every button's actions) |
 
 On macOS, Log Out, Restart and Shut Down go through macOS's own confirmation dialog, so a stray press can't lose work. Windows has no such dialog, so Restart and Shut Down wait 15 seconds with a warning (`shutdown /a` cancels). Sleep on Windows hibernates instead if hibernation is enabled.
@@ -130,5 +137,6 @@ Set `DECK_PORT` to override the auto-detected `/dev/cu.usbserial*` / `/dev/cu.us
 ```
 deck_debug/   Arduino firmware (pin finder + health ping)
 app/          Tauri app: Rust in src-tauri/, windows in ui/, build.sh
+app/plugins/  consoledeck-plugins submodule, bundled into the app
 deck.py       terminal controller, doctor and LaunchAgent service
 ```

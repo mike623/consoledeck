@@ -69,34 +69,70 @@ function comboFromEvent(e) {
   return [...mods, name].join("+");
 }
 
-/** Names for system actions and input languages, loaded once. */
-const names = { system: {}, input: {} };
+/** Installed plugins by id (a button's "type" is its plugin id), and input language names. */
+let plugins = {};
+const names = { input: {} };
+const loadPlugins = async () => { plugins = Object.fromEntries((await invoke("list_plugins")).map((p) => [p.id, p])); };
 const namesReady = Promise.all([
-  invoke("system_actions").then((list) => (names.system = Object.fromEntries(list))),
+  loadPlugins(),
   invoke("input_sources").then((list) => (names.input = Object.fromEntries(list))),
 ]);
+
+/** Built into ConsoleDeck: the deck itself handles them, so they're there even without the System plugin. */
+const CORE_SYSTEM = [{ value: "editor", label: "Open ConsoleDeck Editor" },
+  { value: "cheatsheet", label: "Show Cheat Sheet", note: "Shows every button's actions over the app in front. Set it as a Long Press: it stays up while you hold the button." }];
+
+/** The plugin behind an action type, or undefined when it isn't installed. */
+function pluginFor(type) {
+  if (type !== "system") return plugins[type];
+  const p = plugins.system ?? { id: "system", name: "System", fields: [{ id: "action", label: "Action", type: "select", options: [] }] };
+  const [first, ...rest] = p.fields;
+  return { ...p, fields: [{ ...first, options: [...(first.options ?? []), ...CORE_SYSTEM] }, ...rest] };
+}
+
+const OS = IS_MAC ? "mac" : "windows";
+const forThisOS = (x) => !x.platforms?.length || x.platforms.includes(OS);
+/** This OS's variant of a run. */
+const osRun = (r) => (r?.[OS] ? osRun(r[OS]) : r);
+/** What pressing the button runs: the chosen option's own run, else the plugin's. */
+const runOf = (p, a) => osRun(p.fields[0]?.options?.find((o) => o.value === a.value)?.run ?? p.run);
+
+/** Field values by id: the first field is the action's value, the rest its values map. */
+function actionValues(p, a) {
+  const v = { ...(a.values ?? {}) };
+  if (p.fields[0]) v[p.fields[0].id] = a.value ?? "";
+  return v;
+}
+
+/** A field's value as the deck shows it. */
+function showValue(field, v) {
+  switch (field?.type) {
+    case "keys": return comboSymbols(v);
+    case "password": return "••••••";
+    case "url": try { return new URL(v.includes("://") ? v : "https://" + v).host; } catch { return v; }
+    case "select": return field.options?.find((o) => o.value === v)?.label
+      ?? (field.optionsFrom?.[0] === "inputSources" ? names.input[v] : null) ?? v;
+    default: return v;
+  }
+}
 
 /** Short form for a key on the deck grid and cheat sheet. */
 function shortLabel(a) {
   const v = a.value ?? "";
   if (a.type === "none" || !v) return "–";
-  switch (a.type) {
-    case "key": return comboSymbols(v);
-    case "repeat": return "⟳ " + comboSymbols(v);
-    case "type": return `“${v}”`;
-    case "password": return "••••••";
-    case "system": return names.system[v] ?? v;
-    case "input": return names.input[v] ?? v;
-    case "vpn": return "VPN " + v.split(".")[0];
-    case "url": try { return new URL(v.includes("://") ? v : "https://" + v).host; } catch { return v; }
-    default: return v;
-  }
+  if (a.type === "repeat") return "⟳ " + comboSymbols(v);
+  const p = pluginFor(a.type);
+  if (!p) return `⚠ ${a.type}`; // its plugin was removed
+  const values = actionValues(p, a);
+  const shown = (id) => showValue(p.fields.find((f) => f.id === id), values[id] ?? "");
+  return p.label ? p.label.replace(/\{([\w-]+)\}/g, (_, id) => shown(id)) : shown(p.fields[0]?.id);
 }
 
-/** Calls render now and whenever the deck's state changes. */
+/** Calls render now, whenever the deck's state changes, and after plugins are installed or removed. */
 async function live(render) {
   await namesReady;
   const refresh = async () => render(await invoke("get_state"));
   await listen("state", refresh);
+  await listen("plugins", async () => { await loadPlugins(); refresh(); });
   return refresh();
 }

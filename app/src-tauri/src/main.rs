@@ -8,6 +8,7 @@ mod gestures;
 mod keys;
 mod passwords;
 mod platform;
+mod plugins;
 mod serial;
 
 use config::{Action, Config, Gesture};
@@ -49,10 +50,12 @@ enum Event {
 /// Changes the deck, then runs what it asked for and refreshes the tray and windows.
 fn update<R>(app: &AppHandle, f: impl FnOnce(&mut Deck) -> R) -> R {
     let shared = app.state::<Shared>();
-    let (r, effects, view) = {
+    let (r, effects, view, plugins) = {
         let mut deck = shared.deck.lock().unwrap();
         let r = f(&mut deck);
-        (r, deck.take_effects(), deck.view())
+        let effects = deck.take_effects();
+        let plugins = if effects.iter().any(|e| matches!(e, Effect::Run(_))) { deck.plugins.clone() } else { vec![] };
+        (r, effects, deck.view(), plugins)
     };
     // windows render the new state before the cheat sheet appears
     let json = serde_json::to_string(&view).unwrap_or_default();
@@ -69,7 +72,7 @@ fn update<R>(app: &AppHandle, f: impl FnOnce(&mut Deck) -> R) -> R {
     }
     for e in effects {
         match e {
-            Effect::Run(a) => actions::run(app, &a),
+            Effect::Run(a) => actions::run(app, &plugins, &a),
             Effect::PressKeys(c) => actions::press_keys(&c),
             Effect::ShowWindow(label) => show_window(app, label),
             Effect::ShowCheatSheet => cheat_sheet(app, true),
@@ -81,7 +84,11 @@ fn update<R>(app: &AppHandle, f: impl FnOnce(&mut Deck) -> R) -> R {
 
 fn show_window(app: &AppHandle, label: &str) {
     let window = app.get_webview_window(label).or_else(|| {
-        let (title, w, h) = if label == "calibrate" { ("Calibrate ConsoleDeck", 380.0, 400.0) } else { ("ConsoleDeck Actions", 440.0, 540.0) };
+        let (title, w, h) = match label {
+            "calibrate" => ("Calibrate ConsoleDeck", 380.0, 400.0),
+            "plugins" => ("ConsoleDeck Plugins", 480.0, 560.0),
+            _ => ("ConsoleDeck Actions", 440.0, 540.0),
+        };
         WebviewWindowBuilder::new(app, label, WebviewUrl::App(format!("{label}.html").into()))
             .title(title)
             .inner_size(w, h)
@@ -244,7 +251,88 @@ fn cancel_calibration(app: AppHandle) {
 
 #[tauri::command]
 fn test_action(app: AppHandle, action: Action) {
-    actions::run(&app, &action)
+    let plugins = app.state::<Shared>().deck.lock().unwrap().plugins.clone();
+    actions::run(&app, &plugins, &action)
+}
+
+fn plugin(app: &AppHandle, id: &str) -> Option<plugins::Plugin> {
+    plugins::find(&app.state::<Shared>().deck.lock().unwrap().plugins, id).cloned()
+}
+
+/// Rescans the plugins folder after an install or removal and tells the windows.
+fn reload_plugins(app: &AppHandle) {
+    update(app, |d| d.plugins = plugins::load(&plugins::dir()));
+    let _ = app.emit("plugins", ());
+}
+
+#[tauri::command]
+fn list_plugins(app: AppHandle) -> Vec<plugins::Plugin> {
+    app.state::<Shared>().deck.lock().unwrap().plugins.clone()
+}
+
+/// Runs a field's optionsFrom command: "value" or "value<TAB>label" per line.
+/// async: it may wait on another app (osascript launching Tunnelblick).
+#[tauri::command]
+async fn plugin_options(app: AppHandle, id: String, field: String) -> Vec<(String, String)> {
+    let Some(p) = plugin(&app, &id) else { return vec![] };
+    let Some(args) = p.manifest.fields.iter().find(|f| f.id == field).and_then(|f| f.options_from.clone()) else { return vec![] };
+    match platform::plugin_command(&plugins::resolve(&args, &p.dir), &p.dir).output() {
+        Ok(out) => String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| l.split_once('\t').map_or((l.into(), l.into()), |(v, n)| (v.into(), n.into())))
+            .collect(),
+        Err(e) => {
+            log::error!("{id} options: {e}");
+            vec![]
+        }
+    }
+}
+
+/// A field's button: picks a file if asked, runs the command, and returns its last output line as the new value.
+#[tauri::command]
+async fn plugin_button(app: AppHandle, id: String, field: String) -> Option<String> {
+    let p = plugin(&app, &id)?;
+    let button = p.manifest.fields.iter().find(|f| f.id == field)?.button.clone()?;
+    let mut file = String::new();
+    if !button.pick_file.is_empty() {
+        let exts: Vec<&str> = button.pick_file.iter().map(String::as_str).collect();
+        let picked = app.dialog().file().set_title(&button.label).add_filter(&p.manifest.name, &exts).blocking_pick_file()?;
+        file = picked.into_path().ok()?.to_string_lossy().into_owned();
+    }
+    let args: Vec<String> = button.exec.iter().map(|a| a.replace("{file}", &file)).collect();
+    let out = platform::plugin_command(&plugins::resolve(&args, &p.dir), &p.dir).output().map_err(|e| log::error!("{id}: {e}")).ok()?;
+    if !out.status.success() {
+        log::error!("{id} {}: {}", button.label, String::from_utf8_lossy(&out.stderr).trim());
+    }
+    String::from_utf8_lossy(&out.stdout).lines().map(str::trim).filter(|l| !l.is_empty()).last().map(str::to_string)
+}
+
+/// Files as path -> base64, downloaded by the Plugins window from the registry.
+#[tauri::command]
+fn install_plugin(app: AppHandle, id: String, files: std::collections::BTreeMap<String, String>) -> Result<String, String> {
+    use base64::Engine;
+    let files = files
+        .into_iter()
+        .map(|(path, data)| base64::engine::general_purpose::STANDARD.decode(data).map(|d| (path, d)).map_err(|e| e.to_string()))
+        .collect::<Result<_, _>>()?;
+    let m = plugins::install(&plugins::dir(), &id, &files)?;
+    log::info!("Installed plugin {} {}", m.id, m.version);
+    reload_plugins(&app);
+    Ok(m.version)
+}
+
+#[tauri::command]
+fn remove_plugin(app: AppHandle, id: String) -> Result<(), String> {
+    plugins::remove(&plugins::dir(), &id)?;
+    log::info!("Removed plugin {id}");
+    reload_plugins(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn show_plugins(app: AppHandle) {
+    show_window(&app, "plugins")
 }
 
 /// Encrypted form to store in deck.json; the key is created on first use.
@@ -273,36 +361,10 @@ async fn pick_app(app: AppHandle) -> Option<PickedApp> {
     Some(PickedApp { id, name, open })
 }
 
-#[tauri::command]
-async fn vpn_configs() -> Option<Vec<String>> { // async: osascript may wait for Tunnelblick to launch
-    platform::vpn_configs()
-}
-
-/// Keeps a copy of the picked .ovpn beside deck.json, hands it to Tunnelblick to install and returns the
-/// name Tunnelblick gives it (the file name without extension).
-#[tauri::command]
-async fn import_vpn(app: AppHandle) -> Option<String> {
-    let picked = app.dialog().file().set_title("Choose OpenVPN Config").add_filter("OpenVPN", &["ovpn", "conf"])
-        .blocking_pick_file()?.into_path().ok()?;
-    let dir = Config::path().parent()?.join("vpn");
-    let copy = dir.join(picked.file_name()?);
-    if let Err(e) = std::fs::create_dir_all(&dir).and_then(|_| std::fs::copy(&picked, &copy)) {
-        log::error!("Cannot copy {}: {e}", picked.display());
-        return None;
-    }
-    platform::import_vpn(&copy);
-    Some(copy.file_stem()?.to_string_lossy().into_owned())
-}
-
 /// Sync commands run on the main thread, which macOS's input source API needs.
 #[tauri::command]
 fn input_sources() -> Vec<(String, String)> {
     platform::input_sources()
-}
-
-#[tauri::command]
-fn system_actions() -> Vec<(&'static str, &'static str)> {
-    platform::SYSTEM_ACTIONS.to_vec()
 }
 
 #[tauri::command]
@@ -367,8 +429,8 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             get_state, set_action, add_profile, delete_profile, start_calibration, cancel_calibration,
-            test_action, seal_password, pick_app, input_sources, system_actions, allow_accessibility,
-            vpn_configs, import_vpn
+            test_action, seal_password, pick_app, input_sources, allow_accessibility,
+            list_plugins, plugin_options, plugin_button, install_plugin, remove_plugin, show_plugins
         ])
         .on_window_event(|w, e| {
             // closing the window must not leave presses swallowed
@@ -394,6 +456,7 @@ fn main() {
                 .separator()
                 .text("actions", "Edit Actions…")
                 .text("calibrate", "Calibrate Buttons…")
+                .text("plugins", "Plugins…")
                 .separator()
                 .item(&tray.login)
                 .text("config", reveal)
@@ -407,7 +470,7 @@ fn main() {
                 .tooltip("ConsoleDeck")
                 .menu(&menu)
                 .on_menu_event(|app, e| match e.id().as_ref() {
-                    "actions" | "calibrate" => show_window(app, e.id().as_ref()),
+                    "actions" | "calibrate" | "plugins" => show_window(app, e.id().as_ref()),
                     "repeat" => update(app, |d| {
                         let combo = d.repeating.clone().unwrap_or_default();
                         d.toggle_repeat(&combo, Instant::now())
@@ -434,7 +497,12 @@ fn main() {
                 })
                 .build(app)?;
             Config::migrate();
-            let deck = Deck::new(std::process::id(), Config::load, Config::save);
+            match app.path().resource_dir() {
+                Ok(res) => plugins::install_bundled(&res.join("plugins"), &plugins::dir()),
+                Err(e) => log::error!("No resource folder: {e}"),
+            }
+            let mut deck = Deck::new(std::process::id(), Config::load, Config::save);
+            deck.plugins = plugins::load(&plugins::dir());
             app.manage(Shared { deck: Mutex::new(deck), tray, shown: Mutex::new(String::new()) });
             std::thread::spawn(move || listen_forever(tx));
             let handle = app.handle().clone();

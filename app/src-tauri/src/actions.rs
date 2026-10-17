@@ -1,6 +1,7 @@
-//! Runs a button's action. Slow ones (typing) run on their own thread so the deck keeps listening.
+//! Runs a button's action through its plugin. Slow ones (typing) run on their own thread so the deck keeps listening.
 
 use crate::config::{normalize_url, Action};
+use crate::plugins::{self, Plugin, Step};
 use crate::{keys, passwords, platform};
 use enigo::{Direction, Enigo, Key, Keyboard, Settings};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -46,39 +47,42 @@ fn type_text(text: String) {
     }
 }
 
-pub fn run(app: &AppHandle, action: &Action) {
-    let Some(value) = action.value.clone().filter(|v| !v.is_empty()) else { return };
-    match (action.kind.as_str(), value.as_str()) {
-        ("url", _) => {
-            if let Err(e) = app.opener().open_url(normalize_url(&value), None::<&str>) {
-                log::error!("Cannot open {value}: {e}");
+/// Runs a button's plugin action. Repeat, editor and cheat sheet never get here: the deck handles them.
+pub fn run(app: &AppHandle, plugins: &[Plugin], action: &Action) {
+    if action.kind == "none" {
+        return;
+    }
+    let Some(plugin) = plugins::find(plugins, &action.kind) else {
+        return log::error!("No {} plugin installed: add it in Plugins", action.kind);
+    };
+    let Some(step) = plugin.manifest.step(action) else { return };
+    match step {
+        Step::Exec(args) => platform::run_plugin(&plugins::resolve(&args, &plugin.dir), &plugin.dir),
+        Step::Shell(script) => platform::run_script(&script),
+        Step::Url(url) => {
+            if let Err(e) = app.opener().open_url(normalize_url(&url), None::<&str>) {
+                log::error!("Cannot open {url}: {e}");
             }
         }
-        ("app", _) => platform::open_app(&value),
-        ("script", _) => platform::run_script(&value),
-        ("key", _) => press_keys(&value),
-        ("type", _) => type_text(value),
-        ("password", _) => match passwords::password_key(false).and_then(|k| passwords::decrypt(&value, &k)) {
+        Step::App(name) => platform::open_app(&name),
+        Step::Keys(combo) => press_keys(&combo),
+        Step::Type(text) => type_text(text),
+        Step::Password(sealed) => match passwords::password_key(false).and_then(|k| passwords::decrypt(&sealed, &k)) {
             Some(p) => type_text(p),
             None => log::error!("Cannot decrypt password (secret.key missing or changed); set it again in the editor"),
         },
         // TIS (Mac) must run on the main thread
-        ("input", _) => {
-            let _ = app.run_on_main_thread(move || platform::select_input_source(&value));
-        }
-        ("system", "inputsource") => {
+        Step::Input(id) if id == "next" => {
             let _ = app.run_on_main_thread(platform::next_input_source);
         }
-        #[cfg(target_os = "macos")]
-        ("system", "lock") => press_keys("ctrl+cmd+q"), // macOS's own Lock Screen shortcut
-        #[cfg(target_os = "macos")]
-        ("vpn", _) => platform::toggle_vpn(&value),
-        ("system", "mute") => media_key(Key::VolumeMute),
-        ("system", "volumeup") => media_key(Key::VolumeUp),
-        ("system", "volumedown") => media_key(Key::VolumeDown),
-        // The deck handles these; from the editor's Test button there's nothing useful to do
-        ("system", "editor" | "cheatsheet") => {}
-        ("system", id) => platform::run_system_command(id),
-        (kind, _) => log::warn!("Unknown action type {kind}"),
+        Step::Input(id) => {
+            let _ = app.run_on_main_thread(move || platform::select_input_source(&id));
+        }
+        Step::Media(key) => match key.as_str() {
+            "mute" => media_key(Key::VolumeMute),
+            "volumeup" => media_key(Key::VolumeUp),
+            "volumedown" => media_key(Key::VolumeDown),
+            other => log::error!("Unknown media key {other}"),
+        },
     }
 }

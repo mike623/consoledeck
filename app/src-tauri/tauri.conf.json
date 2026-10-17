@@ -31,7 +31,10 @@
       "signingIdentity": "-",
       "minimumSystemVersion": "13.0"
     },
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "resources": {
+      "../plugins/plugins/": "plugins/"
+    }
   },
   "plugins": {
     "updater": {

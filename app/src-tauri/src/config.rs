@@ -12,17 +12,20 @@ pub struct Action {
     #[serde(rename = "type")]
     pub kind: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub value: Option<String>,
+    pub value: Option<String>, // the plugin's first field; deck.py reads only this
+    /// The plugin's other fields, by field id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub values: BTreeMap<String, String>,
 }
 
 impl Action {
     #[cfg(test)]
     pub fn new(kind: &str, value: &str) -> Self {
-        Action { kind: kind.into(), value: Some(value.into()) }
+        Action { kind: kind.into(), value: Some(value.into()), values: BTreeMap::new() }
     }
 
     pub fn none() -> Self {
-        Action { kind: "none".into(), value: None }
+        Action { kind: "none".into(), value: None, values: BTreeMap::new() }
     }
 }
 
@@ -262,6 +265,16 @@ mod tests {
         assert_eq!(c.action(1, Gesture::Long, SAFARI).0, Action::none());
         assert_eq!(c.profiles["com.apple.Safari"].buttons.get("1.long"), Some(&Action::none()));
         assert_eq!(c.action(1, Gesture::Double, None).0, Action::none());
+    }
+
+    #[test]
+    fn extra_plugin_fields_round_trip_in_values() {
+        let json = r#"{"buttons": {"1": {"type": "vpn", "value": "Home", "values": {"mode": "fast"}}, "2": {"type": "url", "value": "x.com"}}}"#;
+        let c = Config::parse(json).unwrap();
+        assert_eq!(c.buttons["1"].values["mode"], "fast");
+        let saved = serde_json::to_string(&c).unwrap();
+        assert!(saved.contains(r#""values":{"mode":"fast"}"#) && !saved.contains(r#""x.com","values""#));
+        assert_eq!(Config::parse(&saved).unwrap(), c);
     }
 
     #[test]

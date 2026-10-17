@@ -1,5 +1,5 @@
-//! Everything that differs between macOS and Windows: the app in front, input languages,
-//! system commands and how apps and scripts are launched.
+//! Everything that differs between macOS and Windows: the app in front, input languages
+//! and how apps, scripts and plugin commands are launched.
 
 use serde::Serialize;
 use std::process::Command;
@@ -13,33 +13,39 @@ pub struct FrontApp {
     pub pid: u32,
 }
 
-/// System actions: stored value, menu label. Order is the order shown in the editor.
-pub const SYSTEM_ACTIONS: [(&str, &str); 13] = [
-    ("lock", "Lock Screen"),
-    ("sleep", "Sleep"),
-    ("displaysleep", "Turn Display Off"),
-    ("screensaver", "Start Screen Saver"),
-    ("inputsource", "Next Input Language"),
-    ("mute", "Mute / Unmute"),
-    ("volumeup", "Volume Up"),
-    ("volumedown", "Volume Down"),
-    ("logout", "Log Out…"),
-    ("restart", "Restart…"),
-    ("shutdown", "Shut Down…"),
-    ("editor", "Open ConsoleDeck Editor"),
-    ("cheatsheet", "Show Cheat Sheet"),
-];
-
 fn spawn(args: &[&str]) {
     let mut cmd = Command::new(args[0]);
     cmd.args(&args[1..]);
     start(cmd, args);
 }
 
+/// A plugin command, run in its folder; CONSOLEDECK_DIR is the folder deck.json is in.
+pub fn plugin_command(args: &[String], dir: &std::path::Path) -> Command {
+    let mut cmd = Command::new(&args[0]);
+    cmd.args(&args[1..]);
+    prepare(&mut cmd);
+    cmd.current_dir(dir).env("CONSOLEDECK_DIR", crate::config::Config::path().parent().unwrap());
+    cmd
+}
+
+pub fn run_plugin(args: &[String], dir: &std::path::Path) {
+    let what: Vec<&str> = args.iter().map(String::as_str).collect();
+    if let Err(e) = plugin_command(args, dir).spawn() {
+        log::error!("{what:?} failed: {e}");
+    }
+}
+
 fn start(mut cmd: Command, what: &[&str]) {
     if let Some(home) = dirs::home_dir() {
         cmd.current_dir(home);
     }
+    prepare(&mut cmd);
+    if let Err(e) = cmd.spawn() {
+        log::error!("{what:?} failed: {e}");
+    }
+}
+
+fn prepare(cmd: &mut Command) {
     #[cfg(target_os = "macos")]
     // Apps launched from Finder get a bare PATH; scripts expect Homebrew tools.
     cmd.env("PATH", "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin");
@@ -47,9 +53,6 @@ fn start(mut cmd: Command, what: &[&str]) {
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console flashing up
-    }
-    if let Err(e) = cmd.spawn() {
-        log::error!("{what:?} failed: {e}");
     }
 }
 
@@ -71,56 +74,12 @@ mod imp {
         Some(FrontApp { id, name, pid: app.processIdentifier() as u32 })
     }
 
-    /// Log out / restart / shut down go through loginwindow, which shows macOS's own
-    /// "Are you sure?" dialog, so a stray press can't lose work.
-    pub fn system_command(id: &str) -> Option<Vec<&'static str>> {
-        let osa = |script| vec!["/usr/bin/osascript", "-e", script];
-        Some(match id {
-            "sleep" => vec!["/usr/bin/pmset", "sleepnow"],
-            "displaysleep" => vec!["/usr/bin/pmset", "displaysleepnow"],
-            "screensaver" => vec!["/usr/bin/open", "-a", "ScreenSaverEngine"],
-            "logout" => osa("tell application \"loginwindow\" to «event aevtlogo»"),
-            "restart" => osa("tell application \"loginwindow\" to «event aevtrrst»"),
-            "shutdown" => osa("tell application \"loginwindow\" to «event aevtrsdn»"),
-            _ => return None,
-        })
-    }
-
     pub fn open_app(name: &str) {
         spawn(&["/usr/bin/open", "-a", name]);
     }
 
     pub fn run_script(script: &str) {
         spawn(&["/bin/bash", "-c", script]);
-    }
-
-    const TUNNELBLICK: &str = "/Applications/Tunnelblick.app";
-
-    /// Tunnelblick's VPN configuration names, or None when it isn't installed.
-    pub fn vpn_configs() -> Option<Vec<String>> {
-        if !std::path::Path::new(TUNNELBLICK).exists() {
-            return None;
-        }
-        let script = ["tell application \"Tunnelblick\" to set n to name of configurations",
-            "set AppleScript's text item delimiters to linefeed", "n as text"];
-        let out = Command::new("/usr/bin/osascript").args(script.iter().flat_map(|l| ["-e", l])).output().ok()?;
-        Some(String::from_utf8_lossy(&out.stdout).lines().filter(|l| !l.is_empty()).map(str::to_string).collect())
-    }
-
-    /// Tunnelblick copies it into its own store and asks the user how to install it.
-    pub fn import_vpn(path: &std::path::Path) {
-        spawn(&["/usr/bin/open", "-a", TUNNELBLICK, &path.to_string_lossy()]);
-    }
-
-    /// Connects the named configuration, or disconnects it when it's already up.
-    pub fn toggle_vpn(name: &str) {
-        let script = ["on run argv", "set n to item 1 of argv", "tell application \"Tunnelblick\"",
-            "if (get state of first configuration where name = n) is \"CONNECTED\" then",
-            "disconnect n", "else", "connect n", "end if", "end tell", "end run"];
-        let mut args = vec!["/usr/bin/osascript"];
-        args.extend(script.iter().flat_map(|l| ["-e", *l]));
-        args.push(name);
-        spawn(&args);
     }
 
     /// Picked .app bundle -> (bundle ID, name). The name is what `open -a` takes.
@@ -237,22 +196,6 @@ mod imp {
         Some(FrontApp { id, name, pid })
     }
 
-    /// No confirmation dialog on Windows, so restart and shut down wait 15s with a warning
-    /// (`shutdown /a` cancels).
-    pub fn system_command(id: &str) -> Option<Vec<&'static str>> {
-        Some(match id {
-            "sleep" => vec!["rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0"],
-            "displaysleep" => vec!["powershell", "-NoProfile", "-Command",
-                "(Add-Type '[DllImport(\"user32.dll\")]public static extern int SendMessage(int h,int m,int w,int l);' -Name W -PassThru)::SendMessage(0xffff,0x0112,0xF170,2)"],
-            "screensaver" => vec!["scrnsave.scr", "/s"],
-            "lock" => vec!["rundll32.exe", "user32.dll,LockWorkStation"],
-            "logout" => vec!["shutdown", "/l"],
-            "restart" => vec!["shutdown", "/r", "/t", "15"],
-            "shutdown" => vec!["shutdown", "/s", "/t", "15"],
-            _ => return None,
-        })
-    }
-
     /// cmd.exe doesn't understand Rust's \" argument escaping, so its command line is passed raw.
     fn cmd(line: String) {
         use std::os::windows::process::CommandExt;
@@ -269,13 +212,6 @@ mod imp {
     pub fn run_script(script: &str) {
         cmd(script.to_string());
     }
-
-    /// Tunnelblick is Mac only.
-    pub fn vpn_configs() -> Option<Vec<String>> {
-        None
-    }
-
-    pub fn import_vpn(_: &std::path::Path) {}
 
     /// exe path -> ("chrome.exe", "chrome"). Lowercase so profiles match however Windows reports it.
     pub fn app_identity(path: &std::path::Path) -> Option<(String, String)> {
@@ -331,30 +267,21 @@ mod imp {
 
 pub use imp::*;
 
-pub fn system_label(id: &str) -> Option<&'static str> {
-    SYSTEM_ACTIONS.iter().find(|(i, _)| *i == id).map(|(_, l)| *l)
-}
-
-pub fn run_system_command(id: &str) {
-    match system_command(id) {
-        Some(args) => spawn(&args),
-        None => log::error!("Unknown system action {id}"),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn system_actions_all_runnable() {
-        // run inside the app (actions.rs) rather than as a command
-        const IN_PROCESS: [&str; 7] = ["lock", "inputsource", "mute", "volumeup", "volumedown", "editor", "cheatsheet"];
-        for (id, _) in SYSTEM_ACTIONS {
-            assert!(IN_PROCESS.contains(&id) || system_command(id).is_some(), "no command for {id}");
-        }
-        assert_eq!(system_command("selfdestruct"), None);
-        assert_eq!(system_label("restart"), Some("Restart…"));
+    #[cfg(unix)]
+    fn plugin_commands_run_in_their_folder() {
+        let dir = std::env::temp_dir().join(format!("consoledeck-exec-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("x.sh"), "echo \"$1|$(basename \"$PWD\")|$CONSOLEDECK_DIR\"").unwrap();
+        let args = crate::plugins::resolve(&["/bin/bash".into(), "./x.sh".into(), "a b".into()], &dir);
+        let out = plugin_command(&args, &dir).output().unwrap();
+        let config_dir = crate::config::Config::path().parent().unwrap().display().to_string();
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), format!("a b|{}|{config_dir}", dir.file_name().unwrap().to_string_lossy()));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
