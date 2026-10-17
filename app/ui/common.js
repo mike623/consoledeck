@@ -11,12 +11,16 @@ const buttonKey = (n, g, page = 1) => (page > 1 ? `p${page}.` : "") + (g === "pr
 const pageOf = (key) => +(/^p(\d+)\./.exec(key)?.[1] ?? 1);
 /** Highest page with a button set, in the default buttons or the app's profile (same as the deck). */
 const pageCount = (config, appId) =>
-  Math.max(1, ...[...Object.keys(config.buttons), ...Object.keys(config.profiles[appId]?.buttons ?? {})].map(pageOf));
+  Math.max(1, ...[...Object.keys(config.buttons), ...profilesFor(config, appId).flatMap((p) => Object.keys(p.buttons))].map(pageOf));
+/** "com.boosteroid.macclient/Last Epoch" (a game a plugin detects) falls back to "com.boosteroid.macclient". */
+const parentOf = (appId) => (appId?.includes("/") ? appId.split("/")[0] : null);
+/** The app's profiles, most specific first (same as the deck). */
+const profilesFor = (config, appId) => [appId, parentOf(appId)].map((id) => id && config.profiles[id]).filter(Boolean);
 
-/** Front app's profile first, then the default buttons. */
+/** Front app's profiles first, then the default buttons. */
 function actionFor(config, n, gesture, appId, page = 1) {
   const k = buttonKey(n, gesture, page);
-  return config.profiles[appId]?.buttons[k] ?? config.buttons[k] ?? { type: "none" };
+  return profilesFor(config, appId).map((p) => p.buttons[k]).find(Boolean) ?? config.buttons[k] ?? { type: "none" };
 }
 
 const el = (tag, attrs = {}, ...children) => {

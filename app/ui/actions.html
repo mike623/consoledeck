@@ -26,6 +26,8 @@ const profile = () => (profileId && cfg().profiles[profileId] ? profileId : null
 /** What `profile` itself sets for button n. undefined in a profile means "use default". */
 const own = (n) => (profile() ? cfg().profiles[profile()].buttons : cfg().buttons)[buttonKey(n, gesture, page)];
 /** What pressing button n does while this profile is active. */
+/** What "Use Default" falls back to: the app's profile for a game's, else Default. */
+const fallbackName = () => cfg().profiles[parentOf(profile())]?.name ?? "Default";
 const effective = (n) => actionFor(cfg(), n, gesture, profile(), page);
 
 /** Every edit is saved straight away, like deck.py. */
@@ -147,7 +149,8 @@ function fieldEditor(p, f, i) {
 function valueEditor(kind) {
   const value = own(selected)?.value ?? "";
   if (kind === "none") return null;
-  if (kind === "inherit") return field("Default", el("span", {}, shortLabel(cfg().buttons[buttonKey(selected, gesture, page)] ?? { type: "none" })));
+  if (kind === "inherit") return field(fallbackName(),
+    el("span", {}, shortLabel(actionFor(cfg(), selected, gesture, parentOf(profile()), page))));
   if (kind === "repeat") return [field("Keys", keyRecorder(value, setValue)),
     note(`Press the button to start pressing these keys every ${cfg().repeatSeconds ?? 60}s, again to stop. Change the interval with "repeatSeconds" in deck.json.`),
     accessibilityNote()];
@@ -176,9 +179,9 @@ const displayOnly = (p) => p.live && !p.run;
 /** Tiles above the buttons on the phone companion. A profile uses the default ones until it changes them. */
 function displayBar() {
   const mine = profile() ? cfg().profiles[profile()].displays : cfg().displays ?? [];
-  const displays = mine ?? cfg().displays ?? [];
+  const displays = mine ?? profilesFor(cfg(), parentOf(profile())).map((p) => p.displays).find(Boolean) ?? cfg().displays ?? [];
   const set = (list) => invoke("set_displays", { profile: profile(), displays: list });
-  const addable = Object.values(plugins).filter((p) => p.live).sort((a, b) => a.name.localeCompare(b.name));
+  const addable = Object.values(plugins).filter((p) => p.live && !p.contextFor).sort((a, b) => a.name.localeCompare(b.name));
   return field("Phone shows",
     el("div", { class: "bar", style: "flex-wrap: wrap" },
       displays.map((a, i) => el("button", { class: "btn", title: "Remove from the phone",
@@ -186,8 +189,8 @@ function displayBar() {
       el("select", { onchange: (e) => e.target.value && set([...displays, { type: e.target.value }]) },
         el("option", { value: "" }, "Add…"),
         addable.map((p) => el("option", { value: p.id }, p.name))),
-      profile() && (mine ? el("button", { class: "btn", title: "Show the default tiles in this app", onclick: () => set(null) }, "Use Default")
-        : el("span", { class: "muted" }, "(Default)"))));
+      profile() && (mine ? el("button", { class: "btn", title: "Show the tiles this falls back to", onclick: () => set(null) }, `Use ${fallbackName()}`)
+        : el("span", { class: "muted" }, `(${fallbackName()})`))));
 }
 
 function profileBar() {
@@ -240,7 +243,7 @@ function render() {
     el("hr"),
     field(gesture === "press" ? `Button ${selected} does` : `${gestureTitle} ${selected} does`,
       el("select", { onchange: (e) => setKind(e.target.value) },
-        profile() && el("option", { value: "inherit", selected: kind === "inherit" }, "Use Default"),
+        profile() && el("option", { value: "inherit", selected: kind === "inherit" }, `Use ${fallbackName()}`),
         kinds(kind).map(([k, label]) => el("option", { value: k, selected: k === kind }, label)))),
     ...[valueEditor(kind)].flat().filter(Boolean),
     el("div", { class: "bar" },

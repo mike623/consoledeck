@@ -147,11 +147,23 @@ impl Config {
         };
     }
 
-    /// Front app's profile first, then the default buttons. The name is None when the default was used.
+    /// The app's profiles, most specific first: a game's ("com.boosteroid.macclient/Last Epoch", from a
+    /// plugin's contextFor), then the app's own ("com.boosteroid.macclient").
+    fn profiles_for<'a, 'b>(&'a self, app: Option<&'b str>) -> impl Iterator<Item = &'a Profile> + use<'a, 'b> {
+        let parent = app.and_then(|a| a.split_once('/')).map(|(p, _)| p);
+        [app, parent].into_iter().flatten().filter_map(|a| self.profiles.get(a))
+    }
+
+    /// The profile in use for this app: its own, or its parent's.
+    pub fn profile(&self, app: Option<&str>) -> Option<&Profile> {
+        self.profiles_for(app).next()
+    }
+
+    /// Front app's profiles first, then the default buttons. The name is None when the default was used.
     /// Pages fall back the same way: page 2 of a profile, then page 2 of the default buttons.
     pub fn action(&self, page: u8, n: u8, gesture: Gesture, app: Option<&str>) -> (Action, Option<String>) {
         let key = gesture.key(page, n);
-        if let Some(profile) = app.and_then(|a| self.profiles.get(a)) {
+        for profile in self.profiles_for(app) {
             if let Some(action) = profile.buttons.get(&key) {
                 return (action.clone(), Some(profile.name.clone()));
             }
@@ -159,9 +171,9 @@ impl Config {
         (self.buttons.get(&key).cloned().unwrap_or_else(Action::none), None)
     }
 
-    /// Phone tiles: the front app's profile's own, else the default ones.
+    /// Phone tiles: the front app's profiles' own, else the default ones.
     pub fn displays(&self, app: Option<&str>) -> &[Action] {
-        app.and_then(|a| self.profiles.get(a)?.displays.as_deref()).unwrap_or(&self.displays)
+        self.profiles_for(app).find_map(|p| p.displays.as_deref()).unwrap_or(&self.displays)
     }
 
     /// None in a profile goes back to the default tiles. A profile that no longer exists is left alone.
@@ -176,10 +188,10 @@ impl Config {
         }
     }
 
-    /// Highest page with a button set, in the default buttons or the app's profile.
+    /// Highest page with a button set, in the default buttons or the app's profiles.
     pub fn page_count(&self, app: Option<&str>) -> u8 {
-        let profile = app.and_then(|a| self.profiles.get(a)).map(|p| &p.buttons);
-        self.buttons.keys().chain(profile.into_iter().flat_map(|b| b.keys())).map(|k| page_of(k)).max().unwrap_or(1)
+        let profiles = self.profiles_for(app).flat_map(|p| p.buttons.keys());
+        self.buttons.keys().chain(profiles).map(|k| page_of(k)).max().unwrap_or(1)
     }
 }
 
@@ -287,6 +299,20 @@ mod tests {
         assert_eq!(c.displays(None).len(), 1);
         c.set_displays(None, SAFARI);
         assert_eq!(c.displays(SAFARI).len(), 1);
+    }
+
+    #[test]
+    fn game_profile_falls_back_to_app_then_default() {
+        let json = r#"{"buttons":{"1":{"type":"url","value":"d"},"2":{"type":"url","value":"d"},"3":{"type":"url","value":"d"}},
+            "profiles":{"com.boosteroid.macclient":{"name":"Boosteroid","buttons":{"2":{"type":"url","value":"b"},"p2.1":{"type":"url","value":"b"}}},
+            "com.boosteroid.macclient/Last Epoch":{"name":"Last Epoch","buttons":{"1":{"type":"url","value":"g"}},"displays":[]}}}"#;
+        let c = Config::parse(json).unwrap();
+        let game = Some("com.boosteroid.macclient/Last Epoch");
+        let v = |n| c.action(1, n, Gesture::Press, game).0.value.unwrap();
+        assert_eq!((v(1), v(2), v(3)), ("g".into(), "b".into(), "d".into()));
+        assert_eq!(c.page_count(game), 2);
+        assert_eq!(c.profile(Some("com.boosteroid.macclient/Satisfactory")).unwrap().name, "Boosteroid");
+        assert!(c.displays(game).is_empty());
     }
 
     #[test]

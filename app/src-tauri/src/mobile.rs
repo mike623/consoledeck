@@ -99,7 +99,7 @@ struct KeyView {
 /// The live command (args, plugin folder) behind each display tile.
 pub fn live_commands(d: &Deck) -> Vec<(Vec<String>, std::path::PathBuf)> {
     d.config
-        .displays(d.profile_id())
+        .displays(d.profile_id().as_deref())
         .iter()
         .filter_map(|a| {
             let p = plugins::find(&d.plugins, &a.kind)?;
@@ -110,6 +110,7 @@ pub fn live_commands(d: &Deck) -> Vec<(Vec<String>, std::path::PathBuf)> {
 
 pub fn view(d: &Deck) -> MobileView {
     let app = d.profile_id();
+    let app = app.as_deref();
     let label = |n, g| {
         let (a, profile) = d.config.action(d.page, n, g, app);
         (short(&a, &d.plugins), profile.is_some())
@@ -120,7 +121,7 @@ pub fn view(d: &Deck) -> MobileView {
             v if v.page_count > 1 => format!("{} · Page {}", v.profile_name, v.page),
             v => v.profile_name,
         },
-        front_app: d.front_app.as_ref().map(|a| a.name.clone()),
+        front_app: d.front().map(|a| a.name),
         status: d.status.clone(),
         last_press: d.last_press.clone(),
         repeating: d.repeating.clone(),
@@ -139,7 +140,7 @@ pub fn view(d: &Deck) -> MobileView {
             .map(|a| {
                 let p = plugins::find(&d.plugins, &a.kind);
                 let label = p.map_or_else(|| format!("{} (not installed)", a.kind), |p| p.manifest.label.clone().unwrap_or(p.manifest.name.clone()));
-                DisplayView { label, live: p.and_then(|p| p.manifest.live(a)).and_then(|k| d.live.get(&k).cloned()) }
+                DisplayView { label, live: p.and_then(|p| p.manifest.live(a)).and_then(|k| d.live.get(&k).map(|l| crate::live::clip(l))) }
             })
             .collect(),
     }

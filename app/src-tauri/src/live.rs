@@ -48,7 +48,7 @@ impl Live {
                     if !flag.load(Ordering::Relaxed) {
                         break;
                     }
-                    f(k.clone(), clip(line.trim()));
+                    f(k.clone(), line.trim().into());
                 }
             });
             running.insert(key, (child, on));
@@ -57,7 +57,7 @@ impl Live {
 }
 
 /// The text is cut to fit a tile; the chart numbers after it (tab-separated) are kept.
-fn clip(line: &str) -> String {
+pub fn clip(line: &str) -> String {
     let (text, chart) = line.split_once('\t').map_or((line, None), |(t, c)| (t, Some(c)));
     let text: String = text.chars().take(20).collect();
     match chart {

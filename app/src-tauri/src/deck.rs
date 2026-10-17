@@ -137,8 +137,27 @@ impl Deck {
         h
     }
 
-    pub fn profile_id(&self) -> Option<&str> {
-        self.front_app.as_ref().map(|a| a.id.as_str())
+    /// Profile id for the app in front: "com.boosteroid.macclient/Last Epoch" while a plugin says that game is on.
+    pub fn profile_id(&self) -> Option<String> {
+        self.front().map(|a| a.id)
+    }
+
+    /// The app in front with its context, if a plugin reports one: id "<app>/<game>", name "<app> · <game>".
+    pub fn front(&self) -> Option<FrontApp> {
+        let app = self.front_app.clone()?;
+        let context = self.context_command().and_then(|(k, _)| self.live.get(&k)).filter(|c| !c.is_empty());
+        Some(match context {
+            Some(c) => FrontApp { id: format!("{}/{c}", app.id), name: format!("{} · {c}", app.name), pid: app.pid },
+            None => app,
+        })
+    }
+
+    /// The live command of the plugin that tells the front app's context, while that app is in front.
+    pub fn context_command(&self) -> Option<(Vec<String>, std::path::PathBuf)> {
+        let app = self.front_app.as_ref()?;
+        let p = self.plugins.iter().find(|p| p.manifest.context_for.contains(&app.id))?;
+        let action = Action { kind: p.manifest.id.clone(), value: None, values: Default::default() };
+        Some((p.manifest.live(&action)?, p.dir.clone()))
     }
 
     pub fn view(&self) -> View {
@@ -146,15 +165,15 @@ impl Deck {
             config: self.config.clone(),
             status: self.status.clone(),
             last_press: self.last_press.clone(),
-            front_app: self.front_app.clone(),
-            profile_name: self.profile_id().and_then(|id| self.config.profiles.get(id)).map_or("Default".into(), |p| p.name.clone()),
-            recent_apps: self.recent_apps.clone(),
+            front_app: self.front(),
+            profile_name: self.config.profile(self.profile_id().as_deref()).map_or("Default".into(), |p| p.name.clone()),
+            recent_apps: self.front().filter(|f| Some(f) != self.front_app.as_ref()).into_iter().chain(self.recent_apps.clone()).collect(),
             calibration: self.calibration.clone(),
             calibration_note: self.calibration_note.clone(),
             next_to_calibrate: self.next_to_calibrate(),
             repeating: self.repeating.clone(),
             page: self.page,
-            page_count: self.config.page_count(self.profile_id()),
+            page_count: self.config.page_count(self.profile_id().as_deref()),
         }
     }
 
@@ -248,7 +267,7 @@ impl Deck {
         self.gestures.long_press = Duration::from_millis(self.config.long_press_ms.unwrap_or(500));
         self.gestures.double_gap = Duration::from_millis(self.config.double_press_ms.unwrap_or(300));
         let app = self.profile_id();
-        let has = |g| self.config.action(self.page, n, g, app).0.kind != "none";
+        let has = |g| self.config.action(self.page, n, g, app.as_deref()).0.kind != "none";
         let uses = Uses { long: has(Gesture::Long), double: has(Gesture::Double) };
         if let Some(g) = self.gestures.down(n, uses, now) {
             self.fire(n, g, now);
@@ -274,7 +293,7 @@ impl Deck {
     }
 
     fn fire(&mut self, n: u8, gesture: Gesture, now: Instant) {
-        let (action, profile) = self.config.action(self.page, n, gesture, self.profile_id());
+        let (action, profile) = self.config.action(self.page, n, gesture, self.profile_id().as_deref());
         let what = match gesture {
             Gesture::Press => "",
             Gesture::Long => " long press",
@@ -315,7 +334,7 @@ impl Deck {
 
     /// Wraps around: next on the last page is page 1.
     fn turn_page(&mut self, next: bool) {
-        let count = self.config.page_count(self.profile_id());
+        let count = self.config.page_count(self.profile_id().as_deref());
         let page = self.page.min(count); // the page may have been emptied since
         self.page = if next { page % count + 1 } else { (page + count - 2) % count + 1 };
         self.last_press = format!("{} · page {}/{count}", self.last_press, self.page);
@@ -395,12 +414,31 @@ mod tests {
     }
 
     #[test]
+    fn game_a_plugin_detects_picks_its_profile() {
+        let (mut d, _) = deck(r#"{"pins": {"D2": 1}, "buttons": {"1": {"type": "url", "value": "a.com"}},
+            "profiles": {"com.boosteroid.macclient/Last Epoch": {"name": "Last Epoch", "buttons": {"1": {"type": "url", "value": "le.com"}}}}}"#);
+        let m = r#"{"id": "boosteroid", "name": "B", "version": "1", "contextFor": ["com.boosteroid.macclient"], "live": {"exec": ["./game.sh"]}}"#;
+        d.plugins = vec![Plugin { manifest: plugins::Manifest::parse(m).unwrap(), dir: Default::default() }];
+        assert!(d.context_command().is_none()); // only while the app is in front
+        d.set_front_app(app("com.boosteroid.macclient", 1));
+        let (key, _) = d.context_command().unwrap();
+        assert_eq!(d.profile_id().as_deref(), Some("com.boosteroid.macclient"));
+        d.live.insert(key.clone(), "Last Epoch".into());
+        assert_eq!(d.profile_id().as_deref(), Some("com.boosteroid.macclient/Last Epoch"));
+        assert_eq!(d.view().profile_name, "Last Epoch");
+        assert_eq!(d.view().recent_apps[0].name, "com.boosteroid.macclient · Last Epoch"); // to add its profile
+        assert_eq!(press(&mut d, "D2", Instant::now()), [Effect::Run(Action::new("url", "le.com"))]);
+        d.live.insert(key, "".into()); // stream ended
+        assert_eq!(d.profile_id().as_deref(), Some("com.boosteroid.macclient"));
+    }
+
+    #[test]
     fn own_windows_keep_previous_front_app() {
         let (mut d, _) = deck(CONFIG);
         assert!(d.set_front_app(app("com.apple.Safari", 1)));
         assert!(!d.set_front_app(app("com.consoledeck.app", OWN)));
         assert!(!d.set_front_app(None));
-        assert_eq!(d.profile_id(), Some("com.apple.Safari"));
+        assert_eq!(d.profile_id().as_deref(), Some("com.apple.Safari"));
         d.set_front_app(app("com.apple.Finder", 2));
         d.set_front_app(app("com.apple.Safari", 1));
         let recent: Vec<_> = d.view().recent_apps.into_iter().map(|a| a.id).collect();

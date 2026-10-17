@@ -33,6 +33,10 @@ pub struct Manifest {
     /// Long-running exec (or mac/windows exec variants) whose stdout lines are shown on the button, phone only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub live: Option<Run>,
+    /// App ids whose context (the game a streaming app is playing) the live command prints; an empty line is none.
+    /// Picks the profile "<app id>/<line>", which falls back to the app's own.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub context_for: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
