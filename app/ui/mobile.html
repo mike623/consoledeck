@@ -37,8 +37,7 @@
   .key.live { position: relative; }
   .key.live b, .key.live span { position: relative; } /* over the chart */
   .key.live svg { position: absolute; inset: auto 0 0 0; width: 100%; height: 60%; }
-  .key.live polygon { fill: #30d15840; }
-  .key.live polyline { fill: none; stroke: #30d158; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+  .key.live polyline { fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
   #update { border: 0; border-radius: 10px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; padding: 10px; }
   .key.live span { font-size: clamp(16px, 6vmin, 36px); line-height: 1.1; font-variant-numeric: tabular-nums; }
   footer { display: flex; gap: 12px; }
@@ -56,29 +55,39 @@ const LAYOUT = [[1, 2, 3], [4, 5, 6], [7, 8, 9, 10]]; // physical 3-3-4, same as
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 
-// A live line "26%<TAB>0.26" also gets a chart of the fraction: the last SAMPLES seconds, kept here, so a reload starts it over.
+// A live line "26%<TAB>0.26" also gets a chart: one line per tab-separated number (green, then red), the last
+// SAMPLES seconds, kept here, so a reload starts it over. The top is 1, or the biggest number shown (bytes/s).
 const SAMPLES = 60;
+const COLORS = ["#30d158", "#ff453a", "#0a84ff"];
 let latest, charts = []; // not "history": that is window.history
 setInterval(() => {
   if (!latest) return;
   charts = latest.displays.map((d, i) => {
-    const f = parseFloat(d.live?.split("\t")[1]?.replace(",", ".")); // a decimal comma, from a script in some locales
-    return isNaN(f) ? [] : [...(charts[i] ?? []), Math.min(1, Math.max(0, f))].slice(-SAMPLES);
+    // a decimal comma comes from a script in some locales
+    const nums = (d.live ?? "").split("\t").slice(1).map((n) => Math.max(0, parseFloat(n.replace(",", "."))) || 0);
+    return nums.length ? [...(charts[i] ?? []), nums].slice(-SAMPLES) : [];
   });
   render(latest);
 }, 1000);
 
-function chart(values) {
+function chart(samples) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", `0 0 ${SAMPLES - 1} 1`);
   svg.setAttribute("preserveAspectRatio", "none");
-  const x0 = SAMPLES - values.length; // newest on the right
-  const points = values.map((v, i) => `${x0 + i},${1 - v}`);
-  const poly = document.createElementNS(svg.namespaceURI, "polygon");
-  poly.setAttribute("points", values.length ? [`${x0},1`, ...points, `${SAMPLES - 1},1`].join(" ") : "");
-  const line = document.createElementNS(svg.namespaceURI, "polyline");
-  line.setAttribute("points", points.join(" "));
-  svg.append(poly, line);
+  if (!samples.length) return svg;
+  const top = Math.max(1, ...samples.flat());
+  const x0 = SAMPLES - samples.length; // newest on the right
+  const make = (tag, attrs) => {
+    const e = document.createElementNS(svg.namespaceURI, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    svg.append(e);
+  };
+  const series = Math.max(...samples.map((s) => s.length));
+  for (let j = 0; j < series; j++) {
+    const points = samples.map((s, i) => `${x0 + i},${1 - (s[j] ?? 0) / top}`);
+    if (j === 0 && series === 1) make("polygon", { points: [`${x0},1`, ...points, `${SAMPLES - 1},1`].join(" "), fill: COLORS[0] + "40" });
+    make("polyline", { points: points.join(" "), stroke: COLORS[j % COLORS.length] });
+  }
   return svg;
 }
 
@@ -91,9 +100,9 @@ function render(s) {
   $("update").hidden = s.page === "{{PAGE}}";
   $("displays").hidden = !s.displays.length;
   $("displays").replaceChildren(...s.displays.map((d, i) => {
-    const [text, fraction] = (d.live ?? "…").split("\t");
+    const [text, ...numbers] = (d.live ?? "…").split("\t");
     const c = el("div", "key live");
-    if (fraction != null) c.append(chart(charts[i] ?? []));
+    if (numbers.length) c.append(chart(charts[i] ?? []));
     c.append(el("b", null, d.label), el("span", null, text));
     return c;
   }));

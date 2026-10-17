@@ -48,7 +48,7 @@ impl Live {
                     if !flag.load(Ordering::Relaxed) {
                         break;
                     }
-                    f(k.clone(), line.trim().chars().take(20).collect());
+                    f(k.clone(), clip(line.trim()));
                 }
             });
             running.insert(key, (child, on));
@@ -56,9 +56,25 @@ impl Live {
     }
 }
 
+/// The text is cut to fit a tile; the chart numbers after it (tab-separated) are kept.
+fn clip(line: &str) -> String {
+    let (text, chart) = line.split_once('\t').map_or((line, None), |(t, c)| (t, Some(c)));
+    let text: String = text.chars().take(20).collect();
+    match chart {
+        Some(c) => format!("{text}\t{}", c.chars().take(60).collect::<String>()),
+        None => text,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clips_text_but_keeps_chart_numbers() {
+        assert_eq!(clip("123456789012345678901234"), "12345678901234567890");
+        assert_eq!(clip("↓128K ↑125K\t131072\t128000"), "↓128K ↑125K\t131072\t128000");
+    }
     use std::sync::mpsc::channel;
     use std::time::Duration;
 
