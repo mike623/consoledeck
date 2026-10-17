@@ -70,6 +70,13 @@ pub struct MobileView {
     repeating: Option<String>,
     held: Vec<u8>,
     keys: Vec<KeyView>,
+    displays: Vec<DisplayView>,
+}
+
+#[derive(Serialize)]
+struct DisplayView {
+    label: String,
+    live: Option<String>, // latest line of the plugin's live command, e.g. "23%"; None until the first one
 }
 
 #[derive(Serialize)]
@@ -79,18 +86,16 @@ struct KeyView {
     long: String,
     double: String,
     own: bool, // set by the front app's profile, not the default
-    #[serde(skip_serializing_if = "Option::is_none")]
-    live: Option<String>, // latest line of the plugin's live command, e.g. "23%"
 }
 
-/// The live command (args, plugin folder) behind each button's press in the profile in front.
+/// The live command (args, plugin folder) behind each display tile.
 pub fn live_commands(d: &Deck) -> Vec<(Vec<String>, std::path::PathBuf)> {
-    POSITIONS
+    d.config
+        .displays
         .iter()
-        .filter_map(|&n| {
-            let (a, _) = d.config.action(n, Gesture::Press, d.profile_id());
+        .filter_map(|a| {
             let p = plugins::find(&d.plugins, &a.kind)?;
-            Some((p.manifest.live(&a)?, p.dir.clone()))
+            Some((p.manifest.live(a)?, p.dir.clone()))
         })
         .collect()
 }
@@ -112,9 +117,17 @@ pub fn view(d: &Deck) -> MobileView {
             .iter()
             .map(|&n| {
                 let (press, own) = label(n, Gesture::Press);
-                let (a, _) = d.config.action(n, Gesture::Press, app);
-                let live = plugins::find(&d.plugins, &a.kind).and_then(|p| p.manifest.live(&a)).and_then(|k| d.live.get(&k).cloned());
-                KeyView { n, press, long: label(n, Gesture::Long).0, double: label(n, Gesture::Double).0, own, live }
+                KeyView { n, press, long: label(n, Gesture::Long).0, double: label(n, Gesture::Double).0, own }
+            })
+            .collect(),
+        displays: d
+            .config
+            .displays
+            .iter()
+            .map(|a| {
+                let p = plugins::find(&d.plugins, &a.kind);
+                let label = p.map_or_else(|| format!("{} (not installed)", a.kind), |p| p.manifest.label.clone().unwrap_or(p.manifest.name.clone()));
+                DisplayView { label, live: p.and_then(|p| p.manifest.live(a)).and_then(|k| d.live.get(&k).cloned()) }
             })
             .collect(),
     }
@@ -373,5 +386,17 @@ mod tests {
         assert_eq!(a("none", ""), "");
         assert_eq!(a("input", "com.apple.keylayout.British"), "British");
         assert_eq!(a("system", "editor"), "Open ConsoleDeck Editor");
+    }
+
+    #[test]
+    fn live_commands_come_from_displays_not_buttons() {
+        let json = r#"{"buttons":{"1":{"type":"cpu"}},"displays":[{"type":"memory"},{"type":"gone"}],"pins":{"D2":1}}"#;
+        let mut d = Deck::new(0, move || Config::parse(json), |_| Ok(()));
+        d.plugins = crate::plugins::load(std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../plugins/plugins")));
+        let live = live_commands(&d);
+        assert_eq!(live.len(), 1);
+        assert!(live[0].1.ends_with("memory"), "{live:?}");
+        let out = serde_json::to_string(&view(&d)).unwrap();
+        assert!(out.contains(r#""displays":[{"label":"RAM","live":null},{"label":"gone (not installed)","live":null}]"#), "{out}");
     }
 }

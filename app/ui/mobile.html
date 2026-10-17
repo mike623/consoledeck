@@ -32,13 +32,16 @@
   .key span { font-size: clamp(13px, 3.6vmin, 22px); font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
   .key small { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .key.empty span { color: var(--muted); font-weight: 400; }
-  .key span.live { font-size: clamp(22px, 8vmin, 44px); font-variant-numeric: tabular-nums; }
+  .displays { flex: 0 0 18%; }
+  [hidden] { display: none !important; }
+  .key.live span { font-size: clamp(16px, 6vmin, 36px); line-height: 1.1; font-variant-numeric: tabular-nums; }
   footer { display: flex; gap: 12px; }
   footer .muted { flex: 1; }
   #repeat { color: var(--warn); }
 </style></head>
 <body>
 <header><div id="dot" class="dot"></div><h1 id="profile">ConsoleDeck</h1><div id="front" class="muted"></div></header>
+<div id="displays" class="row displays" hidden></div>
 <div id="grid" class="grid"></div>
 <footer><div id="last" class="muted"></div><div id="repeat" class="muted"></div></footer>
 <script>
@@ -51,14 +54,20 @@ function render(s) {
   $("front").textContent = s.frontApp ?? "";
   $("last").textContent = s.lastPress || s.status;
   $("repeat").textContent = s.repeating ? "⟳ " + s.repeating : "";
+  $("displays").hidden = !s.displays.length;
+  $("displays").replaceChildren(...s.displays.map((d) => {
+    const c = el("div", "key live");
+    c.append(el("b", null, d.label), el("span", null, d.live ?? "…"));
+    return c;
+  }));
   const keys = Object.fromEntries(s.keys.map((k) => [k.n, k]));
   $("grid").replaceChildren(...LAYOUT.map((row) => {
     const r = el("div", "row");
     r.append(...row.map((n) => {
       const k = keys[n];
       const c = el("div", `key${k.own ? " own" : ""}${k.press ? "" : " empty"}${s.held.includes(n) ? " down" : ""}`);
-      c.append(el("b", null, n), k.live ? el("span", "live", k.live) : el("span", null, k.press || "–"));
-      const extra = [k.live && k.press, k.long && "Long: " + k.long, k.double && "Double: " + k.double].filter(Boolean).join(" · ");
+      c.append(el("b", null, n), el("span", null, k.press || "–"));
+      const extra = [k.long && "Long: " + k.long, k.double && "Double: " + k.double].filter(Boolean).join(" · ");
       if (extra) c.append(el("small", null, extra));
       return c;
     }));

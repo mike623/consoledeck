@@ -237,6 +237,16 @@ fn set_action(app: AppHandle, profile: Option<String>, gesture: Gesture, button:
 }
 
 #[tauri::command]
+fn set_displays(app: AppHandle, displays: Vec<Action>) {
+    update(&app, |d| {
+        if d.reload() {
+            d.config.displays = displays;
+            d.save();
+        }
+    })
+}
+
+#[tauri::command]
 fn add_profile(app: AppHandle, id: String, name: String) {
     update(&app, |d| {
         if d.reload() {
@@ -473,7 +483,7 @@ fn main() {
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
-            get_state, set_action, add_profile, delete_profile, start_calibration, cancel_calibration,
+            get_state, set_action, set_displays, add_profile, delete_profile, start_calibration, cancel_calibration,
             test_action, seal_password, pick_app, input_sources, allow_accessibility,
             list_plugins, plugin_options, plugin_button, install_plugin, remove_plugin, show_plugins,
             companion_info, set_companion, unpair_companion

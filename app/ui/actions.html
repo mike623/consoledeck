@@ -161,12 +161,29 @@ function valueEditor(kind) {
 
 /** Action types for the menu: the core ones and every installed plugin, plus the current one if its plugin is gone. */
 function kinds(current) {
-  const list = Object.values(plugins).map((p) => [p.id, p.name]);
+  const list = Object.values(plugins).filter((p) => !displayOnly(p)).map((p) => [p.id, p.name]);
   if (!plugins.system) list.push(["system", "System"]); // the editor and cheat sheet are always there
   list.sort((a, b) => a[1].localeCompare(b[1]));
   const all = [CORE_KINDS[0], ...list, CORE_KINDS[1]];
   if (!["inherit", "none", "repeat"].includes(current) && !pluginFor(current)) all.push([current, `${current} (not installed)`]);
   return all;
+}
+
+/** Plugins that only show something (CPU Usage): they go on the phone's display row, not on a button. */
+const displayOnly = (p) => p.live && !p.run;
+
+/** Tiles above the buttons on the phone companion; the same in every profile. */
+function displayBar() {
+  const displays = cfg().displays ?? [];
+  const set = (list) => invoke("set_displays", { displays: list });
+  const addable = Object.values(plugins).filter((p) => p.live).sort((a, b) => a.name.localeCompare(b.name));
+  return field("Phone shows",
+    el("div", { class: "bar", style: "flex-wrap: wrap" },
+      displays.map((a, i) => el("button", { class: "btn", title: "Remove from the phone",
+        onclick: () => set(displays.filter((_, j) => j !== i)) }, `${pluginFor(a.type)?.name ?? `${a.type} (not installed)`} ✕`)),
+      el("select", { onchange: (e) => e.target.value && set([...displays, { type: e.target.value }]) },
+        el("option", { value: "" }, "Add…"),
+        addable.map((p) => el("option", { value: p.id }, p.name)))));
 }
 
 function profileBar() {
@@ -219,6 +236,9 @@ function render() {
       el("button", { class: "btn", disabled: !eff.value || typesIntoFrontApp || (eff.type !== "repeat" && !effPlugin),
         title: typesIntoFrontApp ? "Goes to the app in front; press the deck button in that app to test" : "",
         onclick: () => invoke("test_action", { action: eff }) }, "Test")),
+    el("hr"),
+    displayBar(),
+    note("Live tiles over the buttons on the Phone Companion. They don't use a button."),
   );
 }
 

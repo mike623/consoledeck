@@ -62,6 +62,9 @@ pub struct Profile {
 #[serde(default, rename_all = "camelCase")]
 pub struct Config {
     pub buttons: BTreeMap<String, Action>, // the default profile; deck.py only knows this one
+    /// Tiles only the phone companion shows (live plugins like CPU Usage), apart from the buttons.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub displays: Vec<Action>,
     // Gesture timing knobs; no UI, edit deck.json if presses feel too fast or slow.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub double_press_ms: Option<u64>,
