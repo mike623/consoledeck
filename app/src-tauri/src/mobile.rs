@@ -15,6 +15,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 const PAGE: &str = include_str!("../../ui/mobile.html");
+/// Changes when an update changes the page, so a home screen web app (no reload button) can offer one.
+static PAGE_VERSION: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    use std::hash::{DefaultHasher, Hash, Hasher};
+    let mut h = DefaultHasher::new();
+    PAGE.hash(&mut h);
+    format!("{:x}", h.finish())
+});
 const ICON: &[u8] = include_bytes!("../icons/128x128@2x.png");
 
 /// companion.json next to deck.json (deck.py rewrites deck.json and would drop these).
@@ -63,6 +70,7 @@ fn new_token() -> String {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MobileView {
+    page: &'static str,
     profile: String,
     front_app: Option<String>,
     status: String,
@@ -107,6 +115,7 @@ pub fn view(d: &Deck) -> MobileView {
         (short(&a, &d.plugins), profile.is_some())
     };
     MobileView {
+        page: &PAGE_VERSION,
         profile: d.view().profile_name,
         front_app: d.front_app.as_ref().map(|a| a.name.clone()),
         status: d.status.clone(),
@@ -329,7 +338,7 @@ fn handle(mut s: TcpStream, token: &str, tx: &Sender<Msg>) {
     let ok = token_ok(given, token);
     match (path, ok) {
         ("/icon.png", _) => respond(&mut s, "200 OK", "image/png", ICON),
-        ("/", true) => respond(&mut s, "200 OK", "text/html; charset=utf-8", PAGE.replace("{{TOKEN}}", token).as_bytes()),
+        ("/", true) => respond(&mut s, "200 OK", "text/html; charset=utf-8", PAGE.replace("{{TOKEN}}", token).replace("{{PAGE}}", &PAGE_VERSION).as_bytes()),
         ("/manifest.webmanifest", true) => {
             let m = serde_json::json!({
                 "name": "ConsoleDeck", "short_name": "Deck", "start_url": format!("/?t={token}"), "display": "fullscreen",
