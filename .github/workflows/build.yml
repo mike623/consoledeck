@@ -52,11 +52,3 @@ jobs:
           gh release create "$GITHUB_REF_NAME" --generate-notes || true  # the other OS may have made it
           gh release upload "$GITHUB_REF_NAME" ConsoleDeck-* --clobber
 
-  mac-swift:
-    runs-on: macos-15
-    defaults:
-      run:
-        working-directory: mac
-    steps:
-      - uses: actions/checkout@v4
-      - run: swift test

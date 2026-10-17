@@ -22,7 +22,7 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-# shared with the native app in mac/
+# shared with the tray app in app/
 CONFIG = Path.home() / "Library/Application Support/ConsoleDeck/deck.json"
 OLD_CONFIG = HERE / "deck.json"
 BAUD = 115200
