@@ -79,6 +79,20 @@ struct KeyView {
     long: String,
     double: String,
     own: bool, // set by the front app's profile, not the default
+    #[serde(skip_serializing_if = "Option::is_none")]
+    live: Option<String>, // latest line of the plugin's live command, e.g. "23%"
+}
+
+/// The live command (args, plugin folder) behind each button's press in the profile in front.
+pub fn live_commands(d: &Deck) -> Vec<(Vec<String>, std::path::PathBuf)> {
+    POSITIONS
+        .iter()
+        .filter_map(|&n| {
+            let (a, _) = d.config.action(n, Gesture::Press, d.profile_id());
+            let p = plugins::find(&d.plugins, &a.kind)?;
+            Some((p.manifest.live(&a)?, p.dir.clone()))
+        })
+        .collect()
 }
 
 pub fn view(d: &Deck) -> MobileView {
@@ -98,7 +112,9 @@ pub fn view(d: &Deck) -> MobileView {
             .iter()
             .map(|&n| {
                 let (press, own) = label(n, Gesture::Press);
-                KeyView { n, press, long: label(n, Gesture::Long).0, double: label(n, Gesture::Double).0, own }
+                let (a, _) = d.config.action(n, Gesture::Press, app);
+                let live = plugins::find(&d.plugins, &a.kind).and_then(|p| p.manifest.live(&a)).and_then(|k| d.live.get(&k).cloned());
+                KeyView { n, press, long: label(n, Gesture::Long).0, double: label(n, Gesture::Double).0, own, live }
             })
             .collect(),
     }

@@ -56,6 +56,8 @@ pub struct Deck {
     save: Box<dyn Fn(&Config) -> Result<(), String> + Send>,
     effects: Vec<Effect>,
     pub plugins: Vec<Plugin>,
+    /// Latest line from each live command, by its filled-in args.
+    pub live: std::collections::HashMap<Vec<String>, String>,
 }
 
 impl Deck {
@@ -84,6 +86,7 @@ impl Deck {
             save: Box::new(save),
             effects: vec![],
             plugins: vec![],
+            live: Default::default(),
         };
         deck.reload();
         deck

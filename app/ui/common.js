@@ -119,9 +119,10 @@ function showValue(field, v) {
 /** Short form for a key on the deck grid and cheat sheet. */
 function shortLabel(a) {
   const v = a.value ?? "";
+  const p = pluginFor(a.type);
+  if (p && !p.fields.length) return p.label ?? p.name; // nothing to fill in, e.g. CPU Usage
   if (a.type === "none" || !v) return "–";
   if (a.type === "repeat") return "⟳ " + comboSymbols(v);
-  const p = pluginFor(a.type);
   if (!p) return `⚠ ${a.type}`; // its plugin was removed
   const values = actionValues(p, a);
   const shown = (id) => showValue(p.fields.find((f) => f.id === id), values[id] ?? "");

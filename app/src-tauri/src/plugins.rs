@@ -30,6 +30,9 @@ pub struct Manifest {
     /// What a press does when the chosen select option has no run of its own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run: Option<Run>,
+    /// Long-running exec (or mac/windows exec variants) whose stdout lines are shown on the button, phone only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub live: Option<Run>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -167,6 +170,10 @@ impl Run {
             .iter().filter(|b| **b).count()
     }
 
+    fn only_exec(&self) -> bool {
+        (self.exec.is_some() || self.ways() == 0) && self.mac.iter().chain(&self.windows).all(|r| r.only_exec())
+    }
+
     fn check(&self) -> Result<(), String> {
         let variants = self.mac.is_some() || self.windows.is_some();
         match (self.ways(), variants) {
@@ -193,8 +200,14 @@ impl Manifest {
             f.options.iter().filter_map(|o| o.run.as_ref()).try_for_each(Run::check)?;
         }
         m.run.iter().try_for_each(Run::check)?;
+        if let Some(live) = &m.live {
+            live.check()?;
+            if !live.only_exec() {
+                return Err("live only takes exec".into());
+            }
+        }
         let option_runs = m.fields.first().is_some_and(|f| f.options.iter().any(|o| o.run.is_some()));
-        if m.run.is_none() && !option_runs {
+        if m.run.is_none() && m.live.is_none() && !option_runs {
             return Err("nothing to run: add run".into());
         }
         Ok(m)
@@ -222,6 +235,15 @@ impl Manifest {
         }
         let run = option.and_then(|o| o.run.as_ref()).or(self.run.as_ref())?;
         run.step(&|s| fill(s, &values))
+    }
+
+    /// The live command for a button with this action, placeholders filled in. None when there's none here.
+    pub fn live(&self, action: &Action) -> Option<Vec<String>> {
+        let values = self.values(action);
+        match self.live.as_ref()?.step(&|s| fill(s, &values))? {
+            Step::Exec(args) => Some(args),
+            _ => None,
+        }
     }
 
     /// One line for the tray and log.
@@ -420,6 +442,17 @@ fn read_tree(base: &Path, dir: &Path, files: &mut BTreeMap<String, Vec<u8>>) -> 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn live_plugins_need_no_run_and_only_exec() {
+        let m = Manifest::parse(r#"{"id": "cpu", "name": "CPU", "version": "1.0.0",
+            "live": {"mac": {"exec": ["./cpu.sh"]}, "windows": {"exec": ["powershell"]}}}"#).unwrap();
+        let a = Action { kind: "cpu".into(), value: None, values: BTreeMap::new() };
+        let want = if cfg!(target_os = "macos") { "./cpu.sh" } else { "powershell" };
+        assert_eq!(m.live(&a), Some(vec![want.to_string()]));
+        assert_eq!(m.step(&a), None); // display only: a press does nothing
+        assert!(Manifest::parse(r#"{"id": "x", "name": "x", "version": "1", "live": {"url": "u"}}"#).is_err());
+    }
+
     use super::*;
 
     fn system() -> Manifest {

@@ -17,7 +17,7 @@ Turn a [Console Deck V2](https://makerworld.com/en/models/1717141-console-deck-v
 - **Many action types**: open a URL or app, run a shell script, press a key combo, type text, switch input language, lock, sleep, volume and more.
 - **Auto-reconnect** when the deck is unplugged or the board reboots.
 - **Start at login** toggle in the menu.
-- **Phone companion**: scan a QR code from the menu to see the deck live on your phone (same Wi-Fi), and add it to the home screen as a full-screen web app. Display only; phones see button names, never what they run.
+- **Phone companion**: scan a QR code from the menu to see the deck live on your phone (same Wi-Fi), and add it to the home screen as a full-screen web app. Display only; phones see button names, never what they run. Live plugins like **CPU Usage** update their button there every second.
 
 ## Tested hardware
 

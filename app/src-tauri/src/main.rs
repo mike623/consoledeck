@@ -6,6 +6,7 @@ mod config;
 mod deck;
 mod gestures;
 mod keys;
+mod live;
 mod mobile;
 mod passwords;
 mod platform;
@@ -42,6 +43,7 @@ struct Shared {
     tray: Tray,
     shown: Mutex<String>, // last view pushed to the tray and windows, to skip no-op refreshes
     companion: mobile::Companion,
+    live: live::Live,
 }
 
 enum Event {
@@ -52,14 +54,18 @@ enum Event {
 /// Changes the deck, then runs what it asked for and refreshes the tray and windows.
 fn update<R>(app: &AppHandle, f: impl FnOnce(&mut Deck) -> R) -> R {
     let shared = app.state::<Shared>();
-    let (r, effects, view, plugins) = {
+    let (r, effects, view, plugins, wanted) = {
         let mut deck = shared.deck.lock().unwrap();
         let r = f(&mut deck);
         let effects = deck.take_effects();
         let plugins = if effects.iter().any(|e| matches!(e, Effect::Run(_))) { deck.plugins.clone() } else { vec![] };
         shared.companion.send(&deck);
-        (r, effects, deck.view(), plugins)
+        // live commands run only while a phone can show them
+        let wanted = if shared.companion.enabled() { mobile::live_commands(&deck) } else { vec![] };
+        (r, effects, deck.view(), plugins, wanted)
     };
+    let handle = app.clone();
+    shared.live.sync(wanted, std::sync::Arc::new(move |key, line| live_line(&handle, key, line)));
     // windows render the new state before the cheat sheet appears
     let json = serde_json::to_string(&view).unwrap_or_default();
     if *shared.shown.lock().unwrap() != json {
@@ -83,6 +89,13 @@ fn update<R>(app: &AppHandle, f: impl FnOnce(&mut Deck) -> R) -> R {
         }
     }
     r
+}
+
+/// Not a closure inside update: that would make update generic over itself.
+fn live_line(app: &AppHandle, key: Vec<String>, line: String) {
+    update(app, |d| {
+        d.live.insert(key, line);
+    })
 }
 
 fn show_window(app: &AppHandle, label: &str) {
@@ -537,7 +550,7 @@ fn main() {
             }
             let mut deck = Deck::new(std::process::id(), Config::load, Config::save);
             deck.plugins = plugins::load(&plugins::dir());
-            app.manage(Shared { deck: Mutex::new(deck), tray, shown: Mutex::new(String::new()), companion: mobile::Companion::new() });
+            app.manage(Shared { deck: Mutex::new(deck), tray, shown: Mutex::new(String::new()), companion: mobile::Companion::new(), live: Default::default() });
             std::thread::spawn(move || listen_forever(tx));
             let handle = app.handle().clone();
             std::thread::spawn(move || deck_loop(handle, rx));
