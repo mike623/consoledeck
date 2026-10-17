@@ -406,15 +406,19 @@ pub fn remove(root: &Path, id: &str) -> Result<(), String> {
 }
 
 /// First run of a plugin-aware version: the plugins folder doesn't exist yet, so every plugin
-/// shipped inside the app is copied in. After that, what's installed is the user's choice.
+/// shipped inside the app is copied in. After that, what's installed is the user's choice, but an
+/// installed one older than the app's copy is updated (an app update brings its plugin updates).
 pub fn install_bundled(bundled: &Path, root: &Path) {
-    if root.exists() {
-        return;
-    }
+    let first_run = !root.exists();
     if let Err(e) = std::fs::create_dir_all(root) {
         return log::error!("Cannot create {}: {e}", root.display());
     }
+    let installed = load(root);
     for plugin in load(bundled) {
+        let outdated = find(&installed, &plugin.manifest.id).is_some_and(|p| older(&p.manifest.version, &plugin.manifest.version));
+        if !first_run && !outdated {
+            continue;
+        }
         let mut files = BTreeMap::new();
         if let Err(e) = read_tree(&plugin.dir, &plugin.dir, &mut files) {
             log::error!("Cannot read bundled plugin {}: {e}", plugin.manifest.id);
@@ -425,6 +429,12 @@ pub fn install_bundled(bundled: &Path, root: &Path) {
             Err(e) => log::error!("Cannot install bundled plugin {}: {e}", plugin.manifest.id),
         }
     }
+}
+
+/// "1.0.9" < "1.1.0", by number.
+fn older(a: &str, b: &str) -> bool {
+    let nums = |v: &str| v.split('.').map(|n| n.parse::<u64>().unwrap_or(0)).collect::<Vec<_>>();
+    nums(a) < nums(b)
 }
 
 fn read_tree(base: &Path, dir: &Path, files: &mut BTreeMap<String, Vec<u8>>) -> std::io::Result<()> {
@@ -583,6 +593,17 @@ mod tests {
         remove(&root, "app").unwrap();
         install_bundled(&bundled, &root); // folder exists now: removal sticks
         assert!(load(&root).is_empty());
+        std::fs::create_dir_all(bundled.join("url")).unwrap();
+        let url = |v: &str| format!(r#"{{"id": "url", "name": "Open URL", "version": "{v}",
+            "fields": [{{"id": "url", "label": "URL", "type": "url"}}], "run": {{"url": "{{url}}"}}}}"#);
+        std::fs::write(bundled.join("url/plugin.json"), url("1.9.0")).unwrap();
+        install(&root, "url", &BTreeMap::from([("plugin.json".into(), url("1.10.0").into_bytes())])).unwrap();
+        install_bundled(&bundled, &root); // installed one is newer: kept
+        assert_eq!(find(&load(&root), "url").unwrap().manifest.version, "1.10.0");
+        install(&root, "url", &BTreeMap::from([("plugin.json".into(), url("1.2.0").into_bytes())])).unwrap();
+        install_bundled(&bundled, &root); // older: updated from the app
+        assert_eq!(find(&load(&root), "url").unwrap().manifest.version, "1.9.0");
+        assert!(find(&load(&root), "app").is_none());
         std::fs::remove_dir_all(&t).unwrap();
     }
 }
