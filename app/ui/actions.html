@@ -156,7 +156,7 @@ function render() {
       el("select", { onchange: (e) => setKind(e.target.value) },
         profile() && el("option", { value: "inherit", selected: kind === "inherit" }, "Use Default"),
         KINDS.map(([k, label]) => el("option", { value: k, selected: k === kind }, label)))),
-    valueEditor(kind),
+    ...[valueEditor(kind)].flat().filter(Boolean),
     el("div", { class: "bar" },
       !calibrated && el("span", { class: "warn" }, "⚠ Not calibrated yet"),
       el("span", { class: "grow small muted" }, gesture === "press" ? "" : "Buttons with long or double actions wait a moment to tell presses apart."),
