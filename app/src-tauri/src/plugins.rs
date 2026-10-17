@@ -448,7 +448,8 @@ mod tests {
         a.values.insert("mode".into(), "fast".into());
         assert_eq!(m.step(&a), Some(Step::Exec(vec!["/bin/bash".into(), "./toggle.sh".into(), "a b; rm -rf ~".into(), "fast".into()])));
         assert_eq!(m.step(&Action::new("vpn", "")), None); // nothing chosen yet
-        assert_eq!(resolve(&["./toggle.sh".into(), "x".into()], Path::new("/p/vpn")), ["/p/vpn/toggle.sh", "x"]);
+        let dir = Path::new("/p/vpn");
+        assert_eq!(resolve(&["./toggle.sh".into(), "x".into()], dir), [dir.join("toggle.sh").to_string_lossy(), "x".into()]);
     }
 
     #[test]
