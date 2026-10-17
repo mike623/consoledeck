@@ -60,6 +60,9 @@ fn page_of(key: &str) -> u8 {
 #[serde(default)]
 pub struct Profile {
     pub buttons: BTreeMap<String, Action>,
+    /// Phone tiles for this app; None uses the default ones.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub displays: Option<Vec<Action>>,
     pub name: String,
 }
 
@@ -149,6 +152,23 @@ impl Config {
             }
         }
         (self.buttons.get(&key).cloned().unwrap_or_else(Action::none), None)
+    }
+
+    /// Phone tiles: the front app's profile's own, else the default ones.
+    pub fn displays(&self, app: Option<&str>) -> &[Action] {
+        app.and_then(|a| self.profiles.get(a)?.displays.as_deref()).unwrap_or(&self.displays)
+    }
+
+    /// None in a profile goes back to the default tiles. A profile that no longer exists is left alone.
+    pub fn set_displays(&mut self, displays: Option<Vec<Action>>, profile: Option<&str>) {
+        match profile {
+            None => self.displays = displays.unwrap_or_default(),
+            Some(p) => {
+                if let Some(profile) = self.profiles.get_mut(p) {
+                    profile.displays = displays;
+                }
+            }
+        }
     }
 
     /// Highest page with a button set, in the default buttons or the app's profile.
@@ -250,6 +270,18 @@ mod tests {
     fn round_trips() {
         let c = profiled();
         assert_eq!(Config::parse(&serde_json::to_string_pretty(&c).unwrap()).unwrap(), c);
+    }
+
+    #[test]
+    fn profile_displays_override_default() {
+        let mut c = profiled();
+        c.displays = vec![Action::new("cpu", "")];
+        assert_eq!(c.displays(SAFARI), c.displays.as_slice());
+        c.set_displays(Some(vec![]), SAFARI);
+        assert!(c.displays(SAFARI).is_empty());
+        assert_eq!(c.displays(None).len(), 1);
+        c.set_displays(None, SAFARI);
+        assert_eq!(c.displays(SAFARI).len(), 1);
     }
 
     #[test]

@@ -99,7 +99,7 @@ struct KeyView {
 /// The live command (args, plugin folder) behind each display tile.
 pub fn live_commands(d: &Deck) -> Vec<(Vec<String>, std::path::PathBuf)> {
     d.config
-        .displays
+        .displays(d.profile_id())
         .iter()
         .filter_map(|a| {
             let p = plugins::find(&d.plugins, &a.kind)?;
@@ -134,7 +134,7 @@ pub fn view(d: &Deck) -> MobileView {
             .collect(),
         displays: d
             .config
-            .displays
+            .displays(app)
             .iter()
             .map(|a| {
                 let p = plugins::find(&d.plugins, &a.kind);

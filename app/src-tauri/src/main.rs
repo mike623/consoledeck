@@ -237,10 +237,10 @@ fn set_action(app: AppHandle, profile: Option<String>, page: u8, gesture: Gestur
 }
 
 #[tauri::command]
-fn set_displays(app: AppHandle, displays: Vec<Action>) {
+fn set_displays(app: AppHandle, profile: Option<String>, displays: Option<Vec<Action>>) {
     update(&app, |d| {
         if d.reload() {
-            d.config.displays = displays;
+            d.config.set_displays(displays, profile.as_deref());
             d.save();
         }
     })

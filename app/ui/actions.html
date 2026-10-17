@@ -173,10 +173,11 @@ function kinds(current) {
 /** Plugins that only show something (CPU Usage): they go on the phone's display row, not on a button. */
 const displayOnly = (p) => p.live && !p.run;
 
-/** Tiles above the buttons on the phone companion; the same in every profile. */
+/** Tiles above the buttons on the phone companion. A profile uses the default ones until it changes them. */
 function displayBar() {
-  const displays = cfg().displays ?? [];
-  const set = (list) => invoke("set_displays", { displays: list });
+  const mine = profile() ? cfg().profiles[profile()].displays : cfg().displays ?? [];
+  const displays = mine ?? cfg().displays ?? [];
+  const set = (list) => invoke("set_displays", { profile: profile(), displays: list });
   const addable = Object.values(plugins).filter((p) => p.live).sort((a, b) => a.name.localeCompare(b.name));
   return field("Phone shows",
     el("div", { class: "bar", style: "flex-wrap: wrap" },
@@ -184,7 +185,9 @@ function displayBar() {
         onclick: () => set(displays.filter((_, j) => j !== i)) }, `${pluginFor(a.type)?.name ?? `${a.type} (not installed)`} ✕`)),
       el("select", { onchange: (e) => e.target.value && set([...displays, { type: e.target.value }]) },
         el("option", { value: "" }, "Add…"),
-        addable.map((p) => el("option", { value: p.id }, p.name)))));
+        addable.map((p) => el("option", { value: p.id }, p.name))),
+      profile() && (mine ? el("button", { class: "btn", title: "Show the default tiles in this app", onclick: () => set(null) }, "Use Default")
+        : el("span", { class: "muted" }, "(Default)"))));
 }
 
 function profileBar() {

@@ -59,14 +59,14 @@ const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls)
 // SAMPLES seconds, kept here, so a reload starts it over. The top is 1, or the biggest number shown (bytes/s).
 const SAMPLES = 60;
 const COLORS = ["#30d158", "#ff453a", "#0a84ff"];
-let latest, charts = []; // not "history": that is window.history
+let latest, charts = {}; // by tile label, so a profile with other tiles keeps them apart; not "history": that is window.history
 setInterval(() => {
   if (!latest) return;
-  charts = latest.displays.map((d, i) => {
+  charts = Object.fromEntries(latest.displays.map((d) => {
     // a decimal comma comes from a script in some locales
     const nums = (d.live ?? "").split("\t").slice(1).map((n) => Math.max(0, parseFloat(n.replace(",", "."))) || 0);
-    return nums.length ? [...(charts[i] ?? []), nums].slice(-SAMPLES) : [];
-  });
+    return [d.label, nums.length ? [...(charts[d.label] ?? []), nums].slice(-SAMPLES) : []];
+  }));
   render(latest);
 }, 1000);
 
@@ -99,10 +99,10 @@ function render(s) {
   latest = s;
   $("update").hidden = s.page === "{{PAGE}}";
   $("displays").hidden = !s.displays.length;
-  $("displays").replaceChildren(...s.displays.map((d, i) => {
+  $("displays").replaceChildren(...s.displays.map((d) => {
     const [text, ...numbers] = (d.live ?? "…").split("\t");
     const c = el("div", "key live");
-    if (numbers.length) c.append(chart(charts[i] ?? []));
+    if (numbers.length) c.append(chart(charts[d.label] ?? []));
     c.append(el("b", null, d.label), el("span", null, text));
     return c;
   }));
