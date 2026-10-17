@@ -15,9 +15,10 @@ let systemActions: [(id: String, label: String)] = [
     ("restart", "Restart…"),
     ("shutdown", "Shut Down…"),
     ("editor", "Open ConsoleDeck Editor"),
+    ("cheatsheet", "Show Cheat Sheet"),
 ]
 
-/// Command for a system action, or nil for in-process ones ("lock", "inputsource", "editor") and unknown ids.
+/// Command for a system action, or nil for in-process ones ("lock", "inputsource", "editor", "cheatsheet") and unknown ids.
 /// Log out / restart / shut down go through loginwindow, which shows macOS's own
 /// "Are you sure?" dialog, so a stray press can't lose work.
 func systemCommand(_ id: String) -> [String]? {

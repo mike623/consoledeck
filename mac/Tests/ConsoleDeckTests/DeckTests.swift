@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Testing
 @testable import ConsoleDeck
@@ -174,7 +175,7 @@ import Testing
 }
 
 @Test func systemActionsAllRunnable() {
-    for (id, _) in systemActions where !["lock", "inputsource", "editor"].contains(id) {  // in-process, not commands
+    for (id, _) in systemActions where !["lock", "inputsource", "editor", "cheatsheet"].contains(id) {  // in-process, not commands
         #expect(systemCommand(id) != nil, "no command for \(id)")
     }
     #expect(KeyCombo("ctrl+cmd+q") != nil)
@@ -183,4 +184,15 @@ import Testing
     let first = inputSourceChoices()[0]
     #expect(!first.name.isEmpty && describe(Action(type: "input", value: first.id)) == first.name)
     #expect(describe(Action(type: "input", value: "com.example.gone")) == "com.example.gone")
+}
+
+@Test func passwordsAreEncrypted() throws {
+    let key = SymmetricKey(size: .bits256)
+    let sealed = try #require(encryptPassword("s3cret", key: key))
+    #expect(!sealed.contains("s3cret") && sealed != encryptPassword("s3cret", key: key))  // random nonce
+    #expect(decryptPassword(sealed, key: key) == "s3cret")
+    #expect(decryptPassword(sealed, key: SymmetricKey(size: .bits256)) == nil)
+    #expect(decryptPassword("not base64", key: key) == nil)
+    #expect(shortLabel(Action(type: "password", value: sealed)) == "••••••")
+    #expect(describe(Action(type: "password", value: sealed)) == "type password")
 }

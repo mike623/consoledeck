@@ -119,10 +119,22 @@ func describe(_ action: Action) -> String {
     case "key": "key \(keyComboSymbols(action.value ?? ""))"
     case "repeat": "repeat \(keyComboSymbols(action.value ?? ""))"
     case "type": "type \"\((action.value ?? "").prefix(30))\""
+    case "password": "type password"
     case "input": inputSourceName(action.value ?? "")
     case "system": systemActions.first { $0.id == action.value }?.label ?? "system \(action.value ?? "")"
     default: "\(action.type) \(action.value ?? "")"
     }
+}
+
+/// Short form for a key on the deck grid and cheat sheet.
+func shortLabel(_ action: Action) -> String {
+    guard action.type != "none", let value = action.value, !value.isEmpty else { return "–" }
+    if action.type == "key" { return keyComboSymbols(value) }
+    if action.type == "repeat" { return "⟳ " + keyComboSymbols(value) }
+    if action.type == "type" { return "“\(value)”" }
+    if action.type == "password" { return "••••••" }
+    if ["system", "input"].contains(action.type) { return describe(action) }
+    return action.type == "url" ? (URL(string: value)?.host() ?? value) : value
 }
 
 @MainActor
@@ -146,6 +158,13 @@ func run(_ action: Action) {
         }
         type(value)
         return
+    case "password":
+        guard let password = decryptPassword(value) else { return logger.error("Cannot decrypt password (secret.key missing or changed); set it again in the editor") }
+        guard accessibilityTrusted(prompt: true) else {
+            return logger.error("Password not typed: ConsoleDeck needs Accessibility permission")
+        }
+        type(password)
+        return
     case "system" where value == "lock":
         guard accessibilityTrusted(prompt: true) else {
             return logger.error("Lock not sent: ConsoleDeck needs Accessibility permission")
@@ -158,8 +177,8 @@ func run(_ action: Action) {
     case "system" where value == "inputsource":
         selectNextInputSource()
         return
-    case "system" where value == "editor":
-        return  // Deck.fire opens it; from the editor's Test button it's already open
+    case "system" where value == "editor" || value == "cheatsheet":
+        return  // Deck.fire handles these; from the editor's Test button there's nothing useful to do
     case "system":
         guard let command = systemCommand(value) else { return logger.error("Unknown system action \(value, privacy: .public)") }
         args = command
@@ -193,6 +212,10 @@ final class Deck {
     @ObservationIgnored private var repeatTimer: Timer?
     /// SwiftUI's window opener, handed over by the menu bar icon so deck presses can open windows.
     @ObservationIgnored var openWindow: OpenWindowAction?
+    @ObservationIgnored private var held: Set<Int> = []
+    @ObservationIgnored private var cheatSheet: NSPanel?
+    @ObservationIgnored private var cheatSheetHolder: Int?  // button whose release hides it
+    @ObservationIgnored private var cancelCheatSheetTimer: (() -> Void)?
     @ObservationIgnored private var gestures: GestureDetector!
 
     func setStartsAtLogin(_ on: Bool) {
@@ -310,12 +333,20 @@ final class Deck {
             if down { calibrate(pin) }
             return
         }
-        if down { reload() }  // re-read each press so deck.py or hand edits apply immediately
+        if down {
+            reload()  // re-read each press so deck.py or hand edits apply immediately
+            hideCheatSheet()  // any press dismisses it
+        }
         guard let n = config.pins[pin] else {
             if down { lastPress = "\(pin): not calibrated" }
             return
         }
-        guard down else { return gestures.up(n) }
+        guard down else {
+            held.remove(n)
+            if n == cheatSheetHolder { hideCheatSheet() }
+            return gestures.up(n)
+        }
+        held.insert(n)
         gestures.longPress = Double(config.longPressMs ?? 500) / 1000
         gestures.doubleGap = Double(config.doublePressMs ?? 300) / 1000
         let uses = Set([Gesture.long, .double].filter { config.action(button: n, gesture: $0, app: frontApp?.id).action.type != "none" })
@@ -330,6 +361,7 @@ final class Deck {
         logger.notice("\(summary, privacy: .public)")
         if action.type == "repeat" { return toggleRepeat(action.value ?? "") }
         if action == Action(type: "system", value: "editor") { return show("actions") }
+        if action == Action(type: "system", value: "cheatsheet") { return showCheatSheet(n) }
         run(action)
     }
 
@@ -337,6 +369,25 @@ final class Deck {
         guard let openWindow else { return logger.error("Cannot open \(id, privacy: .public): window opener not ready") }
         openWindow(id: id)
         NSApp.activate()  // menu bar apps don't come to the front on their own
+    }
+
+    /// Fired while held (long press): up until release. Fired on release (press, double): up for a few seconds.
+    private func showCheatSheet(_ n: Int) {
+        hideCheatSheet()
+        cheatSheet = makeCheatSheet(config, app: frontApp)
+        if held.contains(n) {
+            cheatSheetHolder = n
+        } else {
+            cancelCheatSheetTimer = GestureDetector.after(4) { [weak self] in self?.hideCheatSheet() }
+        }
+    }
+
+    private func hideCheatSheet() {
+        cancelCheatSheetTimer?()
+        cancelCheatSheetTimer = nil
+        cheatSheetHolder = nil
+        cheatSheet?.orderOut(nil)
+        cheatSheet = nil
     }
 
     /// Same combo again stops it; a different repeat button switches to its combo.

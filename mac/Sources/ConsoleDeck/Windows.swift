@@ -76,8 +76,9 @@ struct ActionsView: View {
     @State private var profileID: String?  // nil = Default
     @State private var gesture = Gesture.press
     @State private var confirmDelete = false
+    @State private var newPassword = ""
 
-    private static let kinds = [("none", "None"), ("url", "Open URL"), ("app", "Open App"), ("key", "Press Keys"), ("repeat", "Repeat Keys"), ("type", "Type Text"), ("system", "System"), ("input", "Input Language"), ("script", "Run Script")]
+    private static let kinds = [("none", "None"), ("url", "Open URL"), ("app", "Open App"), ("key", "Press Keys"), ("repeat", "Repeat Keys"), ("type", "Type Text"), ("password", "Type Password"), ("system", "System"), ("input", "Input Language"), ("script", "Run Script")]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -88,7 +89,7 @@ struct ActionsView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             DeckGrid(
-                label: { summary(effective($0)) },
+                label: { shortLabel(effective($0)) },
                 highlight: { n in n == selected ? .accentColor.opacity(0.6) : .secondary.opacity(0.15) },
                 labelColor: { n in profile != nil && own(n) == nil ? .secondary.opacity(0.5) : .primary },
                 onTap: { selected = $0 }
@@ -122,12 +123,26 @@ struct ActionsView: View {
                     TextField("Text", text: value, prompt: Text("Typed into the app in front"), axis: .vertical)
                         .lineLimit(2...8)
                     AccessibilityNote()
+                case "password":
+                    HStack {
+                        SecureField("Password", text: $newPassword,
+                                    prompt: Text(value.wrappedValue.isEmpty ? "Not set" : "Saved, type to replace"))
+                            .onSubmit(storePassword)
+                        Button("Save", action: storePassword).disabled(newPassword.isEmpty)
+                    }
+                    Text("Saved encrypted in deck.json (key in secret.key beside it) and shown masked.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    AccessibilityNote()
                 case "system":
                     Picker("Action", selection: value) {
                         if value.wrappedValue.isEmpty { Text("Choose…").tag("") }
                         ForEach(systemActions, id: \.id) { Text($0.label).tag($0.id) }
                     }
                     if value.wrappedValue == "lock" { AccessibilityNote() }
+                    if value.wrappedValue == "cheatsheet" {
+                        Text("Shows every button's actions over the app in front. Set it as a Long Press: it stays up while you hold the button.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 case "input":
                     Picker("Language", selection: value) {
                         let choices = inputSourceChoices()
@@ -166,6 +181,7 @@ struct ActionsView: View {
             // start on the profile of the app you came from, if it has one
             profileID = deck.frontApp.flatMap { deck.config.profiles[$0.id] != nil ? $0.id : nil }
         }
+        .onChange(of: [String(selected), gesture.rawValue, profileID ?? ""]) { newPassword = "" }  // unsaved, belongs to the old button
         .confirmationDialog("Delete the \(profileName) profile?", isPresented: $confirmDelete) {
             Button("Delete", role: .destructive) {
                 if let profile { deck.config.profiles[profile] = nil }
@@ -220,7 +236,7 @@ struct ActionsView: View {
     }
 
     /// Key and Type actions would land in this window, so Test is off for them.
-    private var typesIntoFrontApp: Bool { ["key", "repeat", "type"].contains(effective(selected).type) }
+    private var typesIntoFrontApp: Bool { ["key", "repeat", "type", "password"].contains(effective(selected).type) }
 
     private func setOwn(_ action: Action?) {
         deck.config.setAction(action, button: selected, gesture: gesture, profile: profile)
@@ -233,9 +249,16 @@ struct ActionsView: View {
         } set: { type in
             guard type != "inherit" else { return setOwn(nil) }
             var a = own(selected) ?? Action(type: type)
+            if (a.type == "password") != (type == "password") { a.value = nil }  // ciphertext is not text, and vice versa
             a.type = type
             setOwn(a)
         }
+    }
+
+    private func storePassword() {
+        guard !newPassword.isEmpty, let sealed = encryptPassword(newPassword) else { return }
+        value.wrappedValue = sealed
+        newPassword = ""
     }
 
     private var value: Binding<String> {
@@ -263,14 +286,6 @@ struct ActionsView: View {
         profileID = app.id
     }
 
-    private func summary(_ action: Action) -> String {
-        guard action.type != "none", let value = action.value, !value.isEmpty else { return "–" }
-        if action.type == "key" { return keyComboSymbols(value) }
-        if action.type == "repeat" { return "⟳ " + keyComboSymbols(value) }
-        if action.type == "type" { return "“\(value)”" }
-        if ["system", "input"].contains(action.type) { return describe(action) }
-        return action.type == "url" ? (URL(string: value)?.host() ?? value) : value
-    }
 }
 
 struct AppIcon: View {
