@@ -375,6 +375,8 @@ fn main() {
                 .separator()
                 .item(&tray.login)
                 .text("config", reveal)
+                .separator()
+                .item(&item("version", &format!("ConsoleDeck {}", app.package_info().version), false)?)
                 .text("update", "Check for Updates…")
                 .text("quit", "Quit ConsoleDeck")
                 .build()?;
