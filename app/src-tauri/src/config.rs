@@ -24,6 +24,11 @@ impl Action {
         Action { kind: kind.into(), value: Some(value.into()), values: BTreeMap::new() }
     }
 
+    /// What the user called it, from a plugin field with id "name" (Run Script); wins over every other label.
+    pub fn name(&self) -> Option<&str> {
+        self.values.get("name").map(|n| n.trim()).filter(|n| !n.is_empty())
+    }
+
     pub fn none() -> Self {
         Action { kind: "none".into(), value: None, values: BTreeMap::new() }
     }

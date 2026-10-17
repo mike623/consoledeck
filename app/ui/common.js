@@ -131,6 +131,7 @@ function shortLabel(a) {
   if (a.type === "repeat") return "⟳ " + comboSymbols(v);
   if (!p) return `⚠ ${a.type}`; // its plugin was removed
   const values = actionValues(p, a);
+  if (values.name?.trim()) return values.name.trim(); // a "name" field (Run Script) wins over every other label
   const shown = (id) => showValue(p.fields.find((f) => f.id === id), values[id] ?? "");
   return p.label ? p.label.replace(/\{([\w-]+)\}/g, (_, id) => shown(id)) : shown(p.fields[0]?.id);
 }

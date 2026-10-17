@@ -147,6 +147,9 @@ pub fn view(d: &Deck) -> MobileView {
 
 /// Like the cheat sheet's label: "youtube.com", "Spotify", not "Open URL \"https://www.youtube.com/\"".
 fn short(a: &Action, plugins: &[Plugin]) -> String {
+    if let Some(n) = a.name() {
+        return n.into();
+    }
     let value = a.value.clone().unwrap_or_default();
     match a.kind.as_str() {
         "system" if ["editor", "cheatsheet", "nextpage", "prevpage"].contains(&value.as_str()) => return describe(a, plugins), // built in, not in the plugin
@@ -398,6 +401,10 @@ mod tests {
         assert_eq!(a("none", ""), "");
         assert_eq!(a("input", "com.apple.keylayout.British"), "British");
         assert_eq!(a("system", "editor"), "Open ConsoleDeck Editor");
+        let mut named = Action::new("script", "uv run --project ~/le-tool le-scanner overlay");
+        assert_eq!(short(&named, &d.plugins), "uv run --project ~/le-tool le-scanner ov"); // cut at 40
+        named.values.insert("name".into(), " Scanner ".into());
+        assert_eq!(short(&named, &d.plugins), "Scanner");
     }
 
     #[test]

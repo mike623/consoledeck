@@ -248,6 +248,9 @@ impl Manifest {
 
     /// One line for the tray and log.
     pub fn describe(&self, action: &Action) -> String {
+        if let Some(n) = action.name() {
+            return n.into();
+        }
         let Some(field) = self.fields.first() else { return self.name.clone() };
         let value = action.value.clone().unwrap_or_default();
         if let Some(o) = field.options.iter().find(|o| o.value == value) {
