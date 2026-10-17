@@ -6,6 +6,7 @@ mod config;
 mod deck;
 mod gestures;
 mod keys;
+mod mobile;
 mod passwords;
 mod platform;
 mod plugins;
@@ -40,6 +41,7 @@ struct Shared {
     deck: Mutex<Deck>,
     tray: Tray,
     shown: Mutex<String>, // last view pushed to the tray and windows, to skip no-op refreshes
+    companion: mobile::Companion,
 }
 
 enum Event {
@@ -55,6 +57,7 @@ fn update<R>(app: &AppHandle, f: impl FnOnce(&mut Deck) -> R) -> R {
         let r = f(&mut deck);
         let effects = deck.take_effects();
         let plugins = if effects.iter().any(|e| matches!(e, Effect::Run(_))) { deck.plugins.clone() } else { vec![] };
+        shared.companion.send(&deck);
         (r, effects, deck.view(), plugins)
     };
     // windows render the new state before the cheat sheet appears
@@ -87,6 +90,7 @@ fn show_window(app: &AppHandle, label: &str) {
         let (title, w, h) = match label {
             "calibrate" => ("Calibrate ConsoleDeck", 380.0, 400.0),
             "plugins" => ("ConsoleDeck Plugins", 480.0, 560.0),
+            "companion" => ("ConsoleDeck Phone Companion", 360.0, 520.0),
             _ => ("ConsoleDeck Actions", 440.0, 540.0),
         };
         WebviewWindowBuilder::new(app, label, WebviewUrl::App(format!("{label}.html").into()))
@@ -330,6 +334,34 @@ fn remove_plugin(app: AppHandle, id: String) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Serialize)]
+struct CompanionInfo {
+    enabled: bool,
+    url: String,
+    qr: String, // SVG
+}
+
+#[tauri::command]
+fn companion_info(app: AppHandle) -> CompanionInfo {
+    let c = &app.state::<Shared>().companion;
+    let url = c.url();
+    let qr = qrcode::QrCode::new(&url)
+        .map(|q| q.render::<qrcode::render::svg::Color>().min_dimensions(240, 240).quiet_zone(true).build())
+        .unwrap_or_default();
+    CompanionInfo { enabled: c.enabled(), url, qr }
+}
+
+#[tauri::command]
+fn set_companion(app: AppHandle, enabled: bool) {
+    app.state::<Shared>().companion.set_enabled(enabled);
+    update(&app, |_| {}); // the phone gets the state straight away
+}
+
+#[tauri::command]
+fn unpair_companion(app: AppHandle) {
+    app.state::<Shared>().companion.unpair()
+}
+
 #[tauri::command]
 fn show_plugins(app: AppHandle) {
     show_window(&app, "plugins")
@@ -430,7 +462,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             get_state, set_action, add_profile, delete_profile, start_calibration, cancel_calibration,
             test_action, seal_password, pick_app, input_sources, allow_accessibility,
-            list_plugins, plugin_options, plugin_button, install_plugin, remove_plugin, show_plugins
+            list_plugins, plugin_options, plugin_button, install_plugin, remove_plugin, show_plugins,
+            companion_info, set_companion, unpair_companion
         ])
         .on_window_event(|w, e| {
             // closing the window must not leave presses swallowed
@@ -457,6 +490,7 @@ fn main() {
                 .text("actions", "Edit Actions…")
                 .text("calibrate", "Calibrate Buttons…")
                 .text("plugins", "Plugins…")
+                .text("companion", "Phone Companion…")
                 .separator()
                 .item(&tray.login)
                 .text("config", reveal)
@@ -470,7 +504,7 @@ fn main() {
                 .tooltip("ConsoleDeck")
                 .menu(&menu)
                 .on_menu_event(|app, e| match e.id().as_ref() {
-                    "actions" | "calibrate" | "plugins" => show_window(app, e.id().as_ref()),
+                    "actions" | "calibrate" | "plugins" | "companion" => show_window(app, e.id().as_ref()),
                     "repeat" => update(app, |d| {
                         let combo = d.repeating.clone().unwrap_or_default();
                         d.toggle_repeat(&combo, Instant::now())
@@ -503,7 +537,7 @@ fn main() {
             }
             let mut deck = Deck::new(std::process::id(), Config::load, Config::save);
             deck.plugins = plugins::load(&plugins::dir());
-            app.manage(Shared { deck: Mutex::new(deck), tray, shown: Mutex::new(String::new()) });
+            app.manage(Shared { deck: Mutex::new(deck), tray, shown: Mutex::new(String::new()), companion: mobile::Companion::new() });
             std::thread::spawn(move || listen_forever(tx));
             let handle = app.handle().clone();
             std::thread::spawn(move || deck_loop(handle, rx));

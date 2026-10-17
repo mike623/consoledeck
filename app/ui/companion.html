@@ -1,0 +1,33 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>ConsoleDeck Phone Companion</title><link rel="stylesheet" href="style.css">
+<style>
+  #qr svg { width: 240px; height: 240px; border-radius: 10px; display: block; margin: 0 auto; }
+  #url { user-select: text; word-break: break-all; }
+</style></head>
+<body class="stack">
+<label class="bar"><input type="checkbox" id="on"> <b class="grow">Show the deck on my phone</b></label>
+<div id="paired" class="stack">
+  <div id="qr"></div>
+  <ol class="small" style="padding-left: 18px; margin: 0">
+    <li>Phone on the same Wi-Fi: scan this with the camera.</li>
+    <li>Allow incoming connections if your computer asks.</li>
+    <li>iPhone: Share › <b>Add to Home Screen</b>. Android: ⋮ › <b>Add to Home screen</b>.</li>
+    <li>Open it from the home screen: full screen, no browser bars.</li>
+  </ol>
+  <div id="url" class="small muted center"></div>
+  <div class="center"><button class="btn" id="unpair">Unpair All Phones</button></div>
+  <div class="small muted center">Phones only see button names, never what they run.</div>
+</div>
+<script src="common.js"></script>
+<script>
+async function refresh() {
+  const c = await invoke("companion_info");
+  document.getElementById("on").checked = c.enabled;
+  document.getElementById("paired").hidden = !c.enabled;
+  document.getElementById("qr").innerHTML = c.qr; // SVG from the qrcode crate
+  document.getElementById("url").textContent = c.url;
+}
+document.getElementById("on").onchange = async (e) => { await invoke("set_companion", { enabled: e.target.checked }); refresh(); };
+document.getElementById("unpair").onclick = async () => { await invoke("unpair_companion"); refresh(); };
+refresh();
+</script></body></html>

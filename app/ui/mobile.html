@@ -1,0 +1,79 @@
+<!doctype html>
+<!-- Served to phones by mobile.rs (not a Tauri window): {{TOKEN}} is filled in per request. -->
+<html><head><meta charset="utf-8"><title>ConsoleDeck</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Deck">
+<meta name="theme-color" content="#000000">
+<link rel="manifest" href="/manifest.webmanifest?t={{TOKEN}}">
+<link rel="apple-touch-icon" href="/icon.png">
+<style>
+  :root { --bg: #000; --fg: #f2f2f7; --muted: #8e8e93; --key: #1c1c1e; --own: #2c2c2e; --accent: #0a84ff; --warn: #ff9f0a; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); overflow: hidden;
+    font: 15px/1.3 -apple-system, system-ui, sans-serif; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  body { display: flex; flex-direction: column; gap: 2.5vmin;
+    padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+  header { display: flex; align-items: baseline; gap: 10px; }
+  h1 { margin: 0; font-size: 22px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .muted { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--warn); flex: none; align-self: center; }
+  .dot.live { background: #30d158; }
+  .grid { flex: 1; display: flex; flex-direction: column; gap: 2.5vmin; min-height: 0; }
+  .row { flex: 1; display: flex; gap: 2.5vmin; min-height: 0; }
+  .key { flex: 1; min-width: 0; border-radius: 14px; background: var(--key); padding: 8px 10px; display: flex; flex-direction: column;
+    justify-content: center; overflow: hidden; transition: background .08s, transform .08s; }
+  .key.own { background: var(--own); }
+  .key.down { background: var(--accent); transform: scale(.96); }
+  .key b { font-size: 12px; color: var(--muted); }
+  .key.down b, .key.down small { color: #fff; }
+  .key span { font-size: clamp(13px, 3.6vmin, 22px); font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+  .key small { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .key.empty span { color: var(--muted); font-weight: 400; }
+  footer { display: flex; gap: 12px; }
+  footer .muted { flex: 1; }
+  #repeat { color: var(--warn); }
+</style></head>
+<body>
+<header><div id="dot" class="dot"></div><h1 id="profile">ConsoleDeck</h1><div id="front" class="muted"></div></header>
+<div id="grid" class="grid"></div>
+<footer><div id="last" class="muted"></div><div id="repeat" class="muted"></div></footer>
+<script>
+const LAYOUT = [[1, 2, 3], [4, 5, 6], [7, 8, 9, 10]]; // physical 3-3-4, same as the desktop windows
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+function render(s) {
+  $("profile").textContent = s.profile;
+  $("front").textContent = s.frontApp ?? "";
+  $("last").textContent = s.lastPress || s.status;
+  $("repeat").textContent = s.repeating ? "⟳ " + s.repeating : "";
+  const keys = Object.fromEntries(s.keys.map((k) => [k.n, k]));
+  $("grid").replaceChildren(...LAYOUT.map((row) => {
+    const r = el("div", "row");
+    r.append(...row.map((n) => {
+      const k = keys[n];
+      const c = el("div", `key${k.own ? " own" : ""}${k.press ? "" : " empty"}${s.held.includes(n) ? " down" : ""}`);
+      c.append(el("b", null, n), el("span", null, k.press || "–"));
+      const extra = [k.long && "Long: " + k.long, k.double && "Double: " + k.double].filter(Boolean).join(" · ");
+      if (extra) c.append(el("small", null, extra));
+      return c;
+    }));
+    return r;
+  }));
+}
+
+// iOS kills the stream when the app is in the background and may not reopen it: start a fresh one on return.
+let es;
+function connect() {
+  es?.close();
+  es = new EventSource("/events?t={{TOKEN}}");
+  es.onopen = () => $("dot").classList.add("live");
+  es.onerror = () => $("dot").classList.remove("live");
+  es.onmessage = (e) => render(JSON.parse(e.data));
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden && es.readyState !== EventSource.OPEN) connect(); });
+connect();
+</script></body></html>

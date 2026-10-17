@@ -122,6 +122,13 @@ impl Deck {
         std::mem::take(&mut self.effects)
     }
 
+    /// Buttons down right now, in order.
+    pub fn held(&self) -> Vec<u8> {
+        let mut h: Vec<u8> = self.held.iter().copied().collect();
+        h.sort();
+        h
+    }
+
     pub fn profile_id(&self) -> Option<&str> {
         self.front_app.as_ref().map(|a| a.id.as_str())
     }
