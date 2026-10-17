@@ -14,6 +14,12 @@ let gesture = "press";
 let profileId;         // undefined until first render; null = Default
 let recording = false;
 let menuOpen = false;
+let vpns = null;       // Tunnelblick configuration names; null when it isn't installed
+
+/** Rechecked on focus: importing a config finishes in Tunnelblick's own windows. */
+const loadVpns = async () => { vpns = await invoke("vpn_configs"); if (S) render(); };
+loadVpns();
+window.addEventListener("focus", loadVpns);
 
 const cfg = () => S.config;
 /** Selected profile, or null for Default (also when the profile was deleted elsewhere). */
@@ -109,6 +115,13 @@ function valueEditor(kind) {
       !value ? el("option", { value: "" }, "Choose…")
         : !names.input[value] && el("option", { value, selected: true }, `${value} (not enabled)`),
       Object.entries(names.input).map(([id, name]) => el("option", { value: id, selected: id === value }, name))));
+    case "vpn": return [field("Tunnelblick VPN", el("div", { class: "bar" },
+        el("select", { class: "grow", onchange: (e) => setValue(e.target.value) },
+          !value ? el("option", { value: "" }, "Choose…")
+            : !vpns?.includes(value) && el("option", { value, selected: true }, `${value} (not in Tunnelblick yet)`),
+          (vpns ?? []).map((n) => el("option", { value: n, selected: n === value }, n))),
+        el("button", { class: "btn", onclick: async () => { const n = await invoke("import_vpn"); if (n) setValue(n); } }, "Import .ovpn…"))),
+      note("Press connects, press again disconnects. Connect once from Tunnelblick's menu and tick Save in Keychain so the button doesn't ask for the username and password.")];
     case "script": return field("Command", textArea({ rows: 4, placeholder: IS_MAC ? "~/bin/thing.sh" : "C:\\tools\\thing.bat",
       style: "font-family: ui-monospace, Consolas, monospace" }));
     default: return null;
@@ -155,7 +168,7 @@ function render() {
     field(gesture === "press" ? `Button ${selected} does` : `${gestureTitle} ${selected} does`,
       el("select", { onchange: (e) => setKind(e.target.value) },
         profile() && el("option", { value: "inherit", selected: kind === "inherit" }, "Use Default"),
-        KINDS.map(([k, label]) => el("option", { value: k, selected: k === kind }, label)))),
+        KINDS.concat(vpns || kind === "vpn" ? [["vpn", "Toggle VPN"]] : []).map(([k, label]) => el("option", { value: k, selected: k === kind }, label)))),
     ...[valueEditor(kind)].flat().filter(Boolean),
     el("div", { class: "bar" },
       !calibrated && el("span", { class: "warn" }, "⚠ Not calibrated yet"),

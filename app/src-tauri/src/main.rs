@@ -273,6 +273,27 @@ async fn pick_app(app: AppHandle) -> Option<PickedApp> {
     Some(PickedApp { id, name, open })
 }
 
+#[tauri::command]
+async fn vpn_configs() -> Option<Vec<String>> { // async: osascript may wait for Tunnelblick to launch
+    platform::vpn_configs()
+}
+
+/// Keeps a copy of the picked .ovpn beside deck.json, hands it to Tunnelblick to install and returns the
+/// name Tunnelblick gives it (the file name without extension).
+#[tauri::command]
+async fn import_vpn(app: AppHandle) -> Option<String> {
+    let picked = app.dialog().file().set_title("Choose OpenVPN Config").add_filter("OpenVPN", &["ovpn", "conf"])
+        .blocking_pick_file()?.into_path().ok()?;
+    let dir = Config::path().parent()?.join("vpn");
+    let copy = dir.join(picked.file_name()?);
+    if let Err(e) = std::fs::create_dir_all(&dir).and_then(|_| std::fs::copy(&picked, &copy)) {
+        log::error!("Cannot copy {}: {e}", picked.display());
+        return None;
+    }
+    platform::import_vpn(&copy);
+    Some(copy.file_stem()?.to_string_lossy().into_owned())
+}
+
 /// Sync commands run on the main thread, which macOS's input source API needs.
 #[tauri::command]
 fn input_sources() -> Vec<(String, String)> {
@@ -346,7 +367,8 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             get_state, set_action, add_profile, delete_profile, start_calibration, cancel_calibration,
-            test_action, seal_password, pick_app, input_sources, system_actions, allow_accessibility
+            test_action, seal_password, pick_app, input_sources, system_actions, allow_accessibility,
+            vpn_configs, import_vpn
         ])
         .on_window_event(|w, e| {
             // closing the window must not leave presses swallowed

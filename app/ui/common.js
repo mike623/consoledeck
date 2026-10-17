@@ -87,6 +87,7 @@ function shortLabel(a) {
     case "password": return "••••••";
     case "system": return names.system[v] ?? v;
     case "input": return names.input[v] ?? v;
+    case "vpn": return "VPN " + v.split(".")[0];
     case "url": try { return new URL(v.includes("://") ? v : "https://" + v).host; } catch { return v; }
     default: return v;
   }

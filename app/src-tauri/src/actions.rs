@@ -71,6 +71,8 @@ pub fn run(app: &AppHandle, action: &Action) {
         }
         #[cfg(target_os = "macos")]
         ("system", "lock") => press_keys("ctrl+cmd+q"), // macOS's own Lock Screen shortcut
+        #[cfg(target_os = "macos")]
+        ("vpn", _) => platform::toggle_vpn(&value),
         ("system", "mute") => media_key(Key::VolumeMute),
         ("system", "volumeup") => media_key(Key::VolumeUp),
         ("system", "volumedown") => media_key(Key::VolumeDown),

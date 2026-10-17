@@ -94,6 +94,35 @@ mod imp {
         spawn(&["/bin/bash", "-c", script]);
     }
 
+    const TUNNELBLICK: &str = "/Applications/Tunnelblick.app";
+
+    /// Tunnelblick's VPN configuration names, or None when it isn't installed.
+    pub fn vpn_configs() -> Option<Vec<String>> {
+        if !std::path::Path::new(TUNNELBLICK).exists() {
+            return None;
+        }
+        let script = ["tell application \"Tunnelblick\" to set n to name of configurations",
+            "set AppleScript's text item delimiters to linefeed", "n as text"];
+        let out = Command::new("/usr/bin/osascript").args(script.iter().flat_map(|l| ["-e", l])).output().ok()?;
+        Some(String::from_utf8_lossy(&out.stdout).lines().filter(|l| !l.is_empty()).map(str::to_string).collect())
+    }
+
+    /// Tunnelblick copies it into its own store and asks the user how to install it.
+    pub fn import_vpn(path: &std::path::Path) {
+        spawn(&["/usr/bin/open", "-a", TUNNELBLICK, &path.to_string_lossy()]);
+    }
+
+    /// Connects the named configuration, or disconnects it when it's already up.
+    pub fn toggle_vpn(name: &str) {
+        let script = ["on run argv", "set n to item 1 of argv", "tell application \"Tunnelblick\"",
+            "if (get state of first configuration where name = n) is \"CONNECTED\" then",
+            "disconnect n", "else", "connect n", "end if", "end tell", "end run"];
+        let mut args = vec!["/usr/bin/osascript"];
+        args.extend(script.iter().flat_map(|l| ["-e", *l]));
+        args.push(name);
+        spawn(&args);
+    }
+
     /// Picked .app bundle -> (bundle ID, name). The name is what `open -a` takes.
     pub fn app_identity(path: &std::path::Path) -> Option<(String, String)> {
         let out = Command::new("/usr/bin/defaults").arg("read").arg(path.join("Contents/Info")).arg("CFBundleIdentifier").output().ok()?;
@@ -240,6 +269,13 @@ mod imp {
     pub fn run_script(script: &str) {
         cmd(script.to_string());
     }
+
+    /// Tunnelblick is Mac only.
+    pub fn vpn_configs() -> Option<Vec<String>> {
+        None
+    }
+
+    pub fn import_vpn(_: &std::path::Path) {}
 
     /// exe path -> ("chrome.exe", "chrome"). Lowercase so profiles match however Windows reports it.
     pub fn app_identity(path: &std::path::Path) -> Option<(String, String)> {
