@@ -574,13 +574,14 @@ mod tests {
     #[test]
     fn registry_plugins_parse() {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins/plugins");
-        let count = std::fs::read_dir(&dir).expect("app/plugins submodule missing: git submodule update --init").count();
-        for e in std::fs::read_dir(&dir).unwrap().flatten() {
+        let mut count = 0;
+        for e in std::fs::read_dir(&dir).expect("app/plugins submodule missing: git submodule update --init").flatten() {
             let json = std::fs::read_to_string(e.path().join("plugin.json")).unwrap();
-            Manifest::parse(&json).unwrap_or_else(|err| panic!("{}: {err}", e.path().display()));
+            let m = Manifest::parse(&json).unwrap_or_else(|err| panic!("{}: {err}", e.path().display()));
+            count += on_this_os(&m.platforms) as usize;
         }
         let here = load(&dir);
-        assert!(here.len() >= count - 1 && find(&here, "system").is_some());
+        assert!(here.len() == count && find(&here, "system").is_some());
         let system = &find(&here, "system").unwrap().manifest;
         for o in &system.fields[0].options {
             assert!(system.step(&Action::new("system", &o.value)).is_some(), "system {} does nothing here", o.value);

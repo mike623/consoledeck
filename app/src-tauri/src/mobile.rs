@@ -423,6 +423,7 @@ mod tests {
         assert!(live[0].1.ends_with("memory"), "{live:?}");
         let out = serde_json::to_string(&view(&d)).unwrap();
         assert!(out.contains(r#""displays":[{"label":"RAM","live":null},{"label":"gone (not installed)","live":null}]"#), "{out}");
+        if !cfg!(target_os = "macos") { return; } // le-character is mac only
         d.config.displays = vec![Action::new("le-character", "sheet.Fire Resistance")];
         let live = live_commands(&d);
         assert_eq!(live[0].0[2], "sheet.Fire Resistance");
