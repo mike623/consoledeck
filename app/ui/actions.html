@@ -323,7 +323,12 @@ function valueEditor(kind) {
   if (kind === "inherit") return field(fallbackName(),
     el("span", {}, shortLabel(actionFor(cfg(), selected, gesture, parentOf(profile()), page))));
   if (kind === "repeat") return [field("Keys", keyRecorder(value, setValue)),
-    note(`Press the button to start pressing these keys every ${cfg().repeatSeconds ?? 60}s, again to stop. Change the interval with "repeatSeconds" in deck.json.`),
+    field("Every", el("input", { type: "number", min: 0.1, step: "any", value: own(selected).values?.seconds ?? "",
+      placeholder: cfg().repeatSeconds ?? 60, onchange: (e) => {
+        const a = own(selected), { seconds, ...values } = a.values ?? {};
+        setOwn({ ...a, values: e.target.value > 0 ? { ...values, seconds: e.target.value } : values });
+      } }), " seconds"),
+    note("Press the button to start pressing these keys at this interval, again to stop. The phone shows it as AFK while it runs."),
     accessibilityNote()];
   const p = pluginFor(kind);
   if (!p) return el("div", { class: "bar warn" }, el("span", { class: "grow" }, `The ${kind} plugin isn't installed, so this button does nothing.`),

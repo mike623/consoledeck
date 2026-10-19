@@ -591,7 +591,7 @@ fn main() {
                     "preview" => preview_phone(app),
                     "repeat" => update(app, |d| {
                         let combo = d.repeating.clone().unwrap_or_default();
-                        d.toggle_repeat(&combo, Instant::now())
+                        d.toggle_repeat(&combo, None, Instant::now())
                     }),
                     "login" => {
                         let al = app.autolaunch();

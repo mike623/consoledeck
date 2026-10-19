@@ -48,6 +48,7 @@ pub struct Deck {
     /// Key combo a "repeat" action is auto-pressing (keeps idle-kicking streams like Boosteroid alive).
     pub repeating: Option<String>,
     repeat_at: Option<Instant>,
+    repeat_every: Duration,
     /// The computer is in dark mode: the phone follows it rather than its own setting.
     pub dark: bool,
     /// Page of buttons in use, from 1; back to 1 when the front app changes.
@@ -82,6 +83,7 @@ impl Deck {
             calibration_note: String::new(),
             repeating: None,
             repeat_at: None,
+            repeat_every: Duration::ZERO,
             dark: false,
             page: 1,
             held: HashSet::new(),
@@ -284,7 +286,7 @@ impl Deck {
         }
         if self.repeat_at.is_some_and(|at| at <= now) {
             self.effects.push(Effect::PressKeys(self.repeating.clone().unwrap()));
-            self.repeat_at = Some(now + self.repeat_every());
+            self.repeat_at = Some(now + self.repeat_every);
         }
         if self.cheat_hide_at.is_some_and(|at| at <= now) {
             self.hide_cheat_sheet();
@@ -306,7 +308,10 @@ impl Deck {
         log::info!("{summary}");
         self.last_press = format!("Last: {summary}");
         match (action.kind.as_str(), action.value.as_deref()) {
-            ("repeat", v) => self.toggle_repeat(v.unwrap_or(""), now),
+            ("repeat", v) => {
+                let secs = action.values.get("seconds").and_then(|s| s.trim().parse().ok());
+                self.toggle_repeat(v.unwrap_or(""), secs, now)
+            }
             ("system", Some("editor")) => self.effects.push(Effect::ShowWindow("actions")),
             ("system", Some("cheatsheet")) => self.show_cheat_sheet(n, gesture == Gesture::Long, now),
             ("system", Some(v @ ("nextpage" | "prevpage" | "cyclepage"))) => self.turn_page(v != "prevpage"),
@@ -343,12 +348,17 @@ impl Deck {
         self.last_press = format!("{} · page {}/{count}", self.last_press, self.page);
     }
 
-    fn repeat_every(&self) -> Duration {
-        Duration::from_secs(self.config.repeat_seconds.unwrap_or(60).max(1))
+    /// "30s", "1.5s", "2m" for the running repeat's interval.
+    pub fn repeat_label(&self) -> String {
+        match self.repeat_every.as_secs_f64() {
+            s if s >= 60.0 && s % 60.0 == 0.0 => format!("{}m", s / 60.0),
+            s => format!("{s}s"),
+        }
     }
 
     /// Same combo again stops it; a different repeat button switches to its combo.
-    pub fn toggle_repeat(&mut self, combo: &str, now: Instant) {
+    /// Every `seconds` (the button's own interval), else deck.json's "repeatSeconds", else 60.
+    pub fn toggle_repeat(&mut self, combo: &str, seconds: Option<f64>, now: Instant) {
         let was = self.repeating.take();
         self.repeat_at = None;
         if was.as_deref() == Some(combo) || combo.is_empty() {
@@ -356,7 +366,9 @@ impl Deck {
         }
         self.repeating = Some(combo.into());
         self.effects.push(Effect::PressKeys(combo.into()));
-        self.repeat_at = Some(now + self.repeat_every());
+        let secs = seconds.unwrap_or(self.config.repeat_seconds.unwrap_or(60) as f64);
+        self.repeat_every = Duration::from_secs_f64(secs.max(0.1));
+        self.repeat_at = Some(now + self.repeat_every);
     }
 }
 
@@ -487,8 +499,11 @@ mod tests {
         assert_eq!(d.next_deadline(), Some(t0 + Duration::from_secs(30)));
         d.tick(t0 + Duration::from_secs(30));
         assert_eq!(d.take_effects(), [Effect::PressKeys("space".into())]);
+        assert_eq!(d.repeat_label(), "30s");
         assert_eq!(press(&mut d, "D3", t0), []); // stops
         assert_eq!((d.repeating.clone(), d.next_deadline()), (None, None));
+        d.toggle_repeat("space", Some(1.5), t0); // a button's own interval wins
+        assert_eq!((d.repeat_label(), d.next_deadline()), ("1.5s".into(), Some(t0 + Duration::from_millis(1500))));
     }
 
     #[test]
