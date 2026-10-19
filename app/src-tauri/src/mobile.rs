@@ -176,7 +176,7 @@ fn short(a: &Action, plugins: &[Plugin]) -> String {
     }
     let value = a.value.clone().unwrap_or_default();
     match a.kind.as_str() {
-        "system" if ["editor", "cheatsheet", "nextpage", "prevpage"].contains(&value.as_str()) => return describe(a, plugins), // built in, not in the plugin
+        "system" if ["editor", "cheatsheet", "nextpage", "prevpage", "cyclepage"].contains(&value.as_str()) => return describe(a, plugins), // built in, not in the plugin
         // ponytail: "com.apple.keylayout.British" -> "British"; real names need the main thread on macOS
         "input" if value != "next" => return value.rsplit('.').next().unwrap_or("").into(),
         _ => {}

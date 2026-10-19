@@ -19,6 +19,9 @@ const profilesFor = (config, appId) => [appId, parentOf(appId)].map((id) => id &
 
 /** Front app's profiles first, then the default buttons. */
 function actionFor(config, n, gesture, appId, page = 1) {
+  // Cycle Page set on page 1 holds its button on every page (same as the deck)
+  const first = page > 1 && actionFor(config, n, gesture, appId);
+  if (first?.type === "system" && first.value === "cyclepage") return first;
   const k = buttonKey(n, gesture, page);
   return profilesFor(config, appId).map((p) => p.buttons[k]).find(Boolean) ?? config.buttons[k] ?? { type: "none" };
 }
@@ -90,6 +93,7 @@ const namesReady = Promise.all([
 const CORE_SYSTEM = [{ value: "editor", label: "Open ConsoleDeck Editor" },
   { value: "nextpage", label: "Next Page", note: "Switches every button to the next page; after the last page comes page 1. Put a page button on each page to get back." },
   { value: "prevpage", label: "Previous Page" },
+  { value: "cyclepage", label: "Cycle Page", note: "Switches every button to the next page, back to page 1 after the last. Set it on page 1: it stays on this button on every page." },
   { value: "cheatsheet", label: "Show Cheat Sheet", note: "Shows every button's actions over the app in front. Set it as a Long Press: it stays up while you hold the button." }];
 
 /** The plugin behind an action type, or undefined when it isn't installed. */

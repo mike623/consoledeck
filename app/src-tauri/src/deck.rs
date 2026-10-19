@@ -306,7 +306,7 @@ impl Deck {
             ("repeat", v) => self.toggle_repeat(v.unwrap_or(""), now),
             ("system", Some("editor")) => self.effects.push(Effect::ShowWindow("actions")),
             ("system", Some("cheatsheet")) => self.show_cheat_sheet(n, gesture == Gesture::Long, now),
-            ("system", Some(v @ ("nextpage" | "prevpage"))) => self.turn_page(v == "nextpage"),
+            ("system", Some(v @ ("nextpage" | "prevpage" | "cyclepage"))) => self.turn_page(v != "prevpage"),
             _ => self.effects.push(Effect::Run(action)),
         }
     }
@@ -370,6 +370,7 @@ pub fn describe(action: &Action, plugins: &[Plugin]) -> String {
         ("system", "cheatsheet") => "Show Cheat Sheet".into(),
         ("system", "nextpage") => "Next Page".into(),
         ("system", "prevpage") => "Previous Page".into(),
+        ("system", "cyclepage") => "Cycle Page".into(),
         (kind, _) => plugins::find(plugins, kind).map_or(format!("{kind} {value} (plugin not installed)"), |p| p.manifest.describe(action)),
     }
 }
@@ -563,6 +564,21 @@ mod tests {
         press(&mut d, "D2", now);
         assert_eq!(d.page, 2);
         d.set_front_app(app("com.apple.Safari", 1));
+        assert_eq!(d.page, 1);
+    }
+
+    #[test]
+    fn cycle_page_holds_its_button_on_every_page() {
+        let (mut d, _) = deck(r#"{"pins": {"D2": 1, "D3": 2}, "buttons": {
+            "1": {"type": "system", "value": "cyclepage"}, "p2.1": {"type": "url", "value": "hidden.com"},
+            "p3.2": {"type": "url", "value": "three.com"}}}"#);
+        let now = Instant::now();
+        press(&mut d, "D2", now);
+        assert_eq!(d.page, 2);
+        press(&mut d, "D2", now); // page 2's own button 1 is covered by Cycle Page
+        assert_eq!(d.page, 3);
+        assert_eq!(press(&mut d, "D3", now), [Effect::Run(Action::new("url", "three.com"))]);
+        press(&mut d, "D2", now); // wraps
         assert_eq!(d.page, 1);
     }
 

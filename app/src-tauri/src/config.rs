@@ -162,6 +162,13 @@ impl Config {
     /// Front app's profiles first, then the default buttons. The name is None when the default was used.
     /// Pages fall back the same way: page 2 of a profile, then page 2 of the default buttons.
     pub fn action(&self, page: u8, n: u8, gesture: Gesture, app: Option<&str>) -> (Action, Option<String>) {
+        if page > 1 {
+            // Cycle Page set on page 1 holds its button on every page, so one button walks them all
+            let first = self.action(1, n, gesture, app);
+            if first.0.kind == "system" && first.0.value.as_deref() == Some("cyclepage") {
+                return first;
+            }
+        }
         let key = gesture.key(page, n);
         for profile in self.profiles_for(app) {
             if let Some(action) = profile.buttons.get(&key) {
