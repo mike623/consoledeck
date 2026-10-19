@@ -184,14 +184,17 @@ function tileName(a) {
   return o ? `${p.name}: ${o.label}` : p.name;
 }
 
-/** Tiles above the buttons on the phone companion. A profile uses the default ones until it changes them. */
+/** Tiles above the buttons on the phone companion. A profile uses the default ones until it changes them;
+ * a game's profile adds its own to its app's (Boosteroid · Last Epoch shows Boosteroid's too). */
 function displayBar() {
   const mine = profile() ? cfg().profiles[profile()].displays : cfg().displays ?? [];
-  const displays = mine ?? profilesFor(cfg(), parentOf(profile())).map((p) => p.displays).find(Boolean) ?? cfg().displays ?? [];
+  const inherited = cfg().profiles[parentOf(profile())]?.displays;
+  const displays = mine ?? (inherited ? [] : cfg().displays ?? []);
   const set = (list) => invoke("set_displays", { profile: profile(), displays: list });
   const addable = Object.values(plugins).filter((p) => p.live && !p.contextFor).sort((a, b) => a.name.localeCompare(b.name));
   return field("Phone shows",
     el("div", { class: "bar", style: "flex-wrap: wrap" },
+      (inherited ?? []).map((a) => el("span", { class: "muted", title: `From ${fallbackName()}` }, tileName(a))),
       displays.map((a, i) => el("button", { class: "btn", title: "Remove from the phone",
         onclick: () => set(displays.filter((_, j) => j !== i)) }, `${tileName(a)} ✕`)),
       el("select", { onchange: (e) => e.target.value && set([...displays, JSON.parse(e.target.value)]) },

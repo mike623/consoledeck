@@ -171,9 +171,15 @@ impl Config {
         (self.buttons.get(&key).cloned().unwrap_or_else(Action::none), None)
     }
 
-    /// Phone tiles: the front app's profiles' own, else the default ones.
-    pub fn displays(&self, app: Option<&str>) -> &[Action] {
-        self.profiles_for(app).find_map(|p| p.displays.as_deref()).unwrap_or(&self.displays)
+    /// Phone tiles: the front app's profile's own, after its app's for a game (Boosteroid's tiles show in
+    /// every game), else the default ones.
+    pub fn displays(&self, app: Option<&str>) -> Vec<Action> {
+        let mut own: Vec<_> = self.profiles_for(app).filter_map(|p| p.displays.as_ref()).collect();
+        if own.is_empty() {
+            return self.displays.clone();
+        }
+        own.reverse();
+        own.into_iter().flatten().cloned().collect()
     }
 
     /// None in a profile goes back to the default tiles. A profile that no longer exists is left alone.
@@ -313,6 +319,18 @@ mod tests {
         assert_eq!(c.page_count(game), 2);
         assert_eq!(c.profile(Some("com.boosteroid.macclient/Satisfactory")).unwrap().name, "Boosteroid");
         assert!(c.displays(game).is_empty());
+    }
+
+    #[test]
+    fn game_profile_tiles_add_to_app_tiles() {
+        let json = r#"{"displays":[{"type":"cpu"}],
+            "profiles":{"com.boosteroid.macclient":{"name":"Boosteroid","buttons":{},"displays":[{"type":"boosteroid-idle"}]},
+            "com.boosteroid.macclient/Last Epoch":{"name":"Last Epoch","buttons":{},"displays":[{"type":"le-scanner"}]}}}"#;
+        let c = Config::parse(json).unwrap();
+        let kinds = |app| c.displays(Some(app)).into_iter().map(|a| a.kind).collect::<Vec<_>>();
+        assert_eq!(kinds("com.boosteroid.macclient/Last Epoch"), ["boosteroid-idle", "le-scanner"]);
+        assert_eq!(kinds("com.boosteroid.macclient/Satisfactory"), ["boosteroid-idle"]);
+        assert_eq!(kinds("com.apple.Safari"), ["cpu"]);
     }
 
     #[test]
