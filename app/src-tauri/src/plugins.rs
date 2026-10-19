@@ -37,6 +37,10 @@ pub struct Manifest {
     /// Picks the profile "<app id>/<line>", which falls back to the app's own.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub context_for: Vec<String>,
+    /// A command printing contexts seen before (games streamed), newest first, one per line:
+    /// offered when adding a game's profile ahead of time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contexts_from: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

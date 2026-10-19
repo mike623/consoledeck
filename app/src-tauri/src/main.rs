@@ -331,23 +331,38 @@ fn list_plugins(app: AppHandle) -> Vec<plugins::Plugin> {
     app.state::<Shared>().deck.lock().unwrap().plugins.clone()
 }
 
+/// A plugin command's non-empty output lines.
+fn output_lines(p: &plugins::Plugin, args: &[String]) -> Vec<String> {
+    match platform::plugin_command(&plugins::resolve(args, &p.dir), &p.dir).output() {
+        Ok(out) => String::from_utf8_lossy(&out.stdout).lines().filter(|l| !l.trim().is_empty()).map(Into::into).collect(),
+        Err(e) => {
+            log::error!("{} {args:?}: {e}", p.manifest.id);
+            vec![]
+        }
+    }
+}
+
 /// Runs a field's optionsFrom command: "value" or "value<TAB>label" per line.
 /// async: it may wait on another app (osascript launching Tunnelblick).
 #[tauri::command]
 async fn plugin_options(app: AppHandle, id: String, field: String) -> Vec<(String, String)> {
     let Some(p) = plugin(&app, &id) else { return vec![] };
     let Some(args) = p.manifest.fields.iter().find(|f| f.id == field).and_then(|f| f.options_from.clone()) else { return vec![] };
-    match platform::plugin_command(&plugins::resolve(&args, &p.dir), &p.dir).output() {
-        Ok(out) => String::from_utf8_lossy(&out.stdout)
-            .lines()
-            .filter(|l| !l.trim().is_empty())
-            .map(|l| l.split_once('\t').map_or((l.into(), l.into()), |(v, n)| (v.into(), n.into())))
-            .collect(),
-        Err(e) => {
-            log::error!("{id} options: {e}");
-            vec![]
-        }
-    }
+    output_lines(&p, &args).into_iter().map(|l| l.split_once('\t').map_or((l.clone(), l.clone()), |(v, n)| (v.into(), n.into()))).collect()
+}
+
+/// Games (contexts) an app's plugins saw before, newest first: "Last Epoch", "Satisfactory".
+#[tauri::command]
+async fn plugin_contexts(app: AppHandle, app_id: String) -> Vec<String> {
+    let plugins = app.state::<Shared>().deck.lock().unwrap().plugins.clone();
+    let mut seen = std::collections::HashSet::new();
+    plugins
+        .iter()
+        .filter(|p| p.manifest.context_for.contains(&app_id))
+        .filter_map(|p| Some(output_lines(p, p.manifest.contexts_from.as_ref()?)))
+        .flatten()
+        .filter(|g| !g.contains('/') && seen.insert(g.clone()))
+        .collect()
 }
 
 /// A field's button: picks a file if asked, runs the command, and returns its last output line as the new value.
@@ -519,7 +534,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             get_state, set_action, set_displays, add_profile, delete_profile, start_calibration, cancel_calibration,
             test_action, seal_password, pick_app, input_sources, allow_accessibility,
-            list_plugins, plugin_options, plugin_button, install_plugin, remove_plugin, show_plugins,
+            list_plugins, plugin_options, plugin_contexts, plugin_button, install_plugin, remove_plugin, show_plugins,
             companion_info, set_companion, unpair_companion
         ])
         .on_window_event(|w, e| {
