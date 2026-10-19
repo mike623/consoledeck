@@ -12,13 +12,13 @@ Turn a [Console Deck V2](https://makerworld.com/en/models/1717141-console-deck-v
 
 - **Tray app for macOS and Windows** (Rust + [Tauri](https://tauri.app)), no Python or service needed at runtime.
 - **Wire it however you like**: a calibration window maps whatever pins your buttons use to the 3-3-4 layout.
-- **Per-app profiles**: buttons change with the app in front, and fall back to the default profile. Inside a streaming app they can change per game: with the **Boosteroid** plugin, *Boosteroid · Last Epoch* falls back to *Boosteroid*, then Default. The plugin also taps Shift when Boosteroid warns of inactivity, so an idle stream isn't ended, and has an idle countdown tile and an End Session button.
+- **Per-app profiles**: buttons change with the app in front, and fall back to the default profile. Inside a streaming app they can change per game: with the **Boosteroid** plugin, *Boosteroid · Last Epoch* falls back to *Boosteroid*, then Default. The plugin also taps Shift when Boosteroid warns of inactivity, so an idle stream isn't ended, and has an End Session button and a Toggle AFK button that keeps the Mac awake and taps a random key every few minutes; on the phone that button counts down to the inactivity kick.
 - **Gestures**: press, long press and double press on every button.
 - **Pages**: more buttons than the deck has. Give a button **Next Page** or **Previous Page** (System) and add pages with **+** in Edit Actions.
 - **Many action types**: open a URL or app, run a shell script, press a key combo, type text, switch input language, lock, sleep, volume and more.
 - **Auto-reconnect** when the deck is unplugged or the board reboots.
 - **Start at login** toggle in the menu.
-- **Phone companion**: scan a QR code from the menu to see the deck live on your phone (same Wi-Fi), and add it to the home screen as a full-screen web app. Display only; phones see button names, never what they run. Above the buttons it can show live tiles (**CPU**, **Memory** and **Network Usage**), set under **Phone shows** in the Actions window; they don't use a button. A profile can have its own tiles, or use the default ones; a game's profile shows its app's tiles too (**Boosteroid Idle** on *Boosteroid* shows in every game).
+- **Phone companion**: scan a QR code from the menu to see the deck live on your phone (same Wi-Fi), and add it to the home screen as a full-screen web app. Display only; phones see button names, never what they run. Under the buttons it can show live tiles (**CPU**, **Memory** and **Network Usage**), set under **Phone shows** in the Actions window; they don't use a button. A profile can have its own tiles, or use the default ones; a game's profile shows its app's tiles too. A button whose action has live text shows it in place of its name (Boosteroid's AFK countdown). **Preview Phone** in the menu opens the same page in a window on the Mac.
 
 ## Tested hardware
 

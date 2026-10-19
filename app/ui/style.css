@@ -1,16 +1,22 @@
+@import url("https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap");
 :root {
-  --bg: #f4f4f6; --fg: #1d1d1f; --muted: #6e6e73; --key: rgba(120,120,128,.15); --accent: #0a84ff;
-  --accent-soft: rgba(10,132,255,.55); --ok: rgba(52,199,89,.35); --warn: #c46a00; --field: #fff; --line: rgba(0,0,0,.12);
+  /* Zen tokens (Panna Cotta design): washi paper light, sumi ink dark, vermilion accent, matcha "done" */
+  --bg: #EFE7D6; --fg: #211F1B; --muted: #6f675a; --key: #F6F1E8; --accent: #C8472E;
+  --accent-soft: rgba(200,71,46,.45); --ok: rgba(110,127,75,.35); --warn: #a8641a; --field: #FBF7EE; --line: rgba(33,31,27,.14);
+  --font: "Zen Kaku Gothic New", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --font-serif: "Shippori Mincho", "Hiragino Mincho ProN", serif;
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #1e1e20; --fg: #f2f2f7; --muted: #98989f; --key: rgba(120,120,128,.28); --field: #2c2c2e; --line: rgba(255,255,255,.14); --warn: #ff9f0a; }
+  :root { --bg: #15161a; --fg: #ece7dc; --muted: #9b9484; --key: #1d1f24; --field: #23262c; --line: rgba(255,255,255,.10);
+    --ok: rgba(120,138,86,.4); --warn: #e0a24a; }
+  .seg { background: rgba(0,0,0,.28) !important; }
 }
 * { box-sizing: border-box; }
-body { margin: 0; padding: 20px; font: 13px/1.4 -apple-system, "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--fg); user-select: none; }
+body { margin: 0; padding: 20px; font: 13px/1.4 var(--font); background: var(--bg); color: var(--fg); user-select: none; }
 .grid { display: flex; flex-direction: column; gap: 8px; align-items: center; }
 .row { display: flex; gap: 8px; }
-.key { width: 74px; height: 54px; border: 0; border-radius: 8px; background: var(--key); color: inherit; font: inherit;
+.key { width: 74px; height: 54px; border: 1px solid var(--line); border-radius: 12px; background: var(--key); box-shadow: 0 1px 3px rgba(33,31,27,.10); color: inherit; font: inherit;
   display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2px 4px; }
 .key b { font-size: 15px; }
 .key span { font-size: 11px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
@@ -18,13 +24,14 @@ body { margin: 0; padding: 20px; font: 13px/1.4 -apple-system, "Segoe UI", syste
 button.key:not(:disabled) { cursor: pointer; }
 .muted { color: var(--muted); } .small { font-size: 11px; } .warn { color: var(--warn); } .center { text-align: center; }
 .bar { display: flex; gap: 6px; align-items: center; } .bar > .grow { flex: 1; }
-select, input, textarea, .btn { font: inherit; color: inherit; background: var(--field); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
+select, input, textarea, .btn { font: inherit; color: inherit; background: var(--field); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; }
 textarea { width: 100%; resize: vertical; } input[type=text], input[type=password] { width: 100%; }
 .btn { cursor: pointer; } .btn.primary { background: var(--accent); color: #fff; border-color: transparent; }
 .btn:disabled { opacity: .5; cursor: default; }
-.seg { display: flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
-.seg button { flex: 1; border: 0; background: transparent; color: inherit; font: inherit; padding: 5px; cursor: pointer; }
-.seg button.on { background: var(--accent); color: #fff; }
+/* segmented control, design recipe: recessed track, raised active segment */
+.seg { display: flex; padding: 3px; border: 0.5px solid var(--line); border-radius: 9px; background: rgba(0,0,0,.04); }
+.seg button { flex: 1; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font: inherit; font-weight: 700; padding: 4px 10px; cursor: pointer; }
+.seg button.on { background: var(--field); color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.1); }
 hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
 .field { display: grid; grid-template-columns: 90px 1fr; gap: 8px; align-items: center; margin-bottom: 10px; }
 .field > label { text-align: right; color: var(--muted); }
@@ -36,3 +43,13 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
 .menu hr { margin: 4px 0; }
 .bar > input, .bar > select, .bar > textarea { flex: 1; min-width: 0; width: auto; }
 .field > div { min-width: 0; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 11px; border-radius: 999px; font-size: 12px; font-weight: 500;
+  background: var(--key); border: 0.5px solid var(--line); white-space: nowrap; }
+.chip.inherited { background: transparent; border: 1px dashed var(--line); color: var(--muted); padding-right: 11px; }
+.chip button { all: unset; cursor: pointer; width: 16px; height: 16px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 9px; color: var(--muted); background: var(--key); }
+.chip button:hover { color: #fff; background: var(--accent); }
+select.chip-add { border-radius: 999px; border-style: dashed; padding: 4px 10px; }
+input[type=checkbox] { accent-color: var(--accent); }
+.bar > input[type=checkbox] { flex: none; }
+h1, h2, h3 { font-family: var(--font-serif); font-weight: 600; }

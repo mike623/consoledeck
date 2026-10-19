@@ -93,13 +93,20 @@ struct KeyView {
     press: String,
     long: String,
     double: String,
-    own: bool, // set by the front app's profile, not the default
+    own: bool,            // set by the front app's profile, not the default
+    live: Option<String>, // the press action's live line, shown instead of its label (Boosteroid's AFK countdown)
 }
 
-/// The live command (args, plugin folder) behind each display tile.
+/// What the phone shows live: each display tile, then each button's press action on this page.
+fn live_actions(d: &Deck) -> Vec<Action> {
+    let app = d.profile_id();
+    let keys = POSITIONS.iter().map(|&n| d.config.action(d.page, n, Gesture::Press, app.as_deref()).0);
+    d.config.displays(app.as_deref()).into_iter().chain(keys).collect()
+}
+
+/// The live command (args, plugin folder) behind each display tile and live button.
 pub fn live_commands(d: &Deck) -> Vec<(Vec<String>, std::path::PathBuf)> {
-    d.config
-        .displays(d.profile_id().as_deref())
+    live_actions(d)
         .iter()
         .filter_map(|a| {
             let p = plugins::find(&d.plugins, &a.kind)?;
@@ -108,13 +115,17 @@ pub fn live_commands(d: &Deck) -> Vec<(Vec<String>, std::path::PathBuf)> {
         .collect()
 }
 
+/// Latest line of an action's live command, cut to fit; None without one or before its first line.
+fn live_line(d: &Deck, a: &Action) -> Option<String> {
+    let key = plugins::find(&d.plugins, &a.kind)?.manifest.live(a)?;
+    d.live.get(&key).map(|l| crate::live::clip(l))
+}
+
 pub fn view(d: &Deck) -> MobileView {
     let app = d.profile_id();
     let app = app.as_deref();
-    let label = |n, g| {
-        let (a, profile) = d.config.action(d.page, n, g, app);
-        (short(&a, &d.plugins), profile.is_some())
-    };
+    let action = |n, g| d.config.action(d.page, n, g, app);
+    let label = |n, g| short(&action(n, g).0, &d.plugins);
     MobileView {
         page: &PAGE_VERSION,
         profile: match d.view() {
@@ -129,8 +140,15 @@ pub fn view(d: &Deck) -> MobileView {
         keys: POSITIONS
             .iter()
             .map(|&n| {
-                let (press, own) = label(n, Gesture::Press);
-                KeyView { n, press, long: label(n, Gesture::Long).0, double: label(n, Gesture::Double).0, own }
+                let (press, profile) = action(n, Gesture::Press);
+                KeyView {
+                    n,
+                    press: short(&press, &d.plugins),
+                    long: label(n, Gesture::Long),
+                    double: label(n, Gesture::Double),
+                    own: profile.is_some(),
+                    live: live_line(d, &press),
+                }
             })
             .collect(),
         displays: d
@@ -145,7 +163,7 @@ pub fn view(d: &Deck) -> MobileView {
                     || format!("{} (not installed)", a.kind),
                     |p| choice(p).or(p.manifest.label.clone()).unwrap_or(p.manifest.name.clone()),
                 );
-                DisplayView { label, live: p.and_then(|p| p.manifest.live(a)).and_then(|k| d.live.get(&k).map(|l| crate::live::clip(l))) }
+                DisplayView { label, live: live_line(d, a) }
             })
             .collect(),
     }
@@ -267,6 +285,12 @@ impl Companion {
     pub fn url(&self) -> String {
         let s = self.settings.lock().unwrap();
         format!("http://{}:{}/?t={}", host(), s.port, s.token)
+    }
+
+    /// The same page on this Mac, for the menu bar preview.
+    pub fn local_url(&self) -> String {
+        let s = self.settings.lock().unwrap();
+        format!("http://127.0.0.1:{}/?t={}", s.port, s.token)
     }
 
     /// Binds once; turning off later keeps the port but refuses every request.
@@ -414,15 +438,17 @@ mod tests {
     }
 
     #[test]
-    fn live_commands_come_from_displays_not_buttons() {
-        let json = r#"{"buttons":{"1":{"type":"cpu"}},"displays":[{"type":"memory"},{"type":"gone"}],"pins":{"D2":1}}"#;
+    fn live_commands_come_from_displays_and_buttons() {
+        let json = r#"{"buttons":{"1":{"type":"cpu"},"1.long":{"type":"network"}},"displays":[{"type":"memory"},{"type":"gone"}],"pins":{"D2":1}}"#;
         let mut d = Deck::new(0, move || Config::parse(json), |_| Ok(()));
         d.plugins = crate::plugins::load(std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../plugins/plugins")));
         let live = live_commands(&d);
-        assert_eq!(live.len(), 1);
-        assert!(live[0].1.ends_with("memory"), "{live:?}");
+        assert_eq!(live.len(), 2, "{live:?}"); // the tile and button 1's press, not its long press
+        assert!(live[0].1.ends_with("memory") && live[1].1.ends_with("cpu"), "{live:?}");
         let out = serde_json::to_string(&view(&d)).unwrap();
         assert!(out.contains(r#""displays":[{"label":"RAM","live":null},{"label":"gone (not installed)","live":null}]"#), "{out}");
+        d.live.insert(live[1].0.clone(), "26%\t0.26".into());
+        assert!(serde_json::to_string(&view(&d)).unwrap().contains(r#""own":false,"live":"26%\t0.26"}"#));
         if !cfg!(target_os = "macos") { return; } // le-character is mac only
         d.config.displays = vec![Action::new("le-character", "sheet.Fire Resistance")];
         let live = live_commands(&d);

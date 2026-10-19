@@ -1,6 +1,165 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><title>ConsoleDeck Actions</title><link rel="stylesheet" href="style.css"></head>
-<body><div id="root" class="stack"></div>
+<html><head><meta charset="utf-8"><title>ConsoleDeck Actions</title><link rel="stylesheet" href="style.css">
+<style>
+  /* Admin panel layout from the Panna Cotta design: toolbar, then profiles rail | deck canvas | inspector */
+  :root { --panel: rgba(244,236,220,0.72); --panel-strong: rgba(246,241,232,0.92); --border: rgba(33,31,27,0.10); --border-strong: rgba(33,31,27,0.17);
+    --inset: rgba(255,255,255,0.6); --faint: #a99f8c; --matcha: oklch(0.52 0.07 130); --hover: rgba(0,0,0,0.04); --well: rgba(255,255,255,0.6); }
+  @media (prefers-color-scheme: dark) {
+    :root { --panel: rgba(26,28,32,0.72); --panel-strong: rgba(29,31,36,0.92); --border: rgba(255,255,255,0.09); --border-strong: rgba(255,255,255,0.15);
+      --inset: rgba(255,255,255,0.05); --faint: #6c665a; --matcha: oklch(0.66 0.07 130); --hover: rgba(255,255,255,0.05); --well: rgba(0,0,0,0.25); }
+  }
+  html, body { height: 100%; }
+  #root { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  body { padding: 0; display: flex; flex-direction: column; overflow: hidden;
+    background: radial-gradient(1100px 620px at 12% -8%, rgba(255,255,255,.55), transparent 60%), radial-gradient(820px 700px at 104% 112%, rgba(33,31,27,.045), transparent 60%), var(--bg); }
+  @media (prefers-color-scheme: dark) {
+    body { background: radial-gradient(1100px 620px at 12% -8%, rgba(255,255,255,.045), transparent 60%), radial-gradient(820px 700px at 104% 112%, rgba(0,0,0,.45), transparent 60%), var(--bg); }
+  }
+  /* the design's soft blurred blobs behind the glass */
+  body::before, body::after { content: ""; position: fixed; border-radius: 50%; filter: blur(80px); pointer-events: none; z-index: 0; }
+  body::before { top: -120px; right: -100px; width: 420px; height: 420px; opacity: .6;
+    background: radial-gradient(circle, color-mix(in oklch, var(--accent) 35%, transparent), transparent 70%); }
+  body::after { bottom: -100px; left: -80px; width: 360px; height: 360px; opacity: .4; background: radial-gradient(circle, oklch(0.72 0.15 280), transparent 70%); }
+  @media (prefers-color-scheme: dark) { body::after { opacity: .25; } }
+  #root { position: relative; z-index: 1; }
+  svg.i { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  .label { font-size: 9.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); }
+
+  .toolbar { flex: none; height: 42px; display: flex; align-items: center; gap: 4px; padding: 0 12px;
+    border-bottom: 0.5px solid var(--border); background: rgba(255,255,255,0.4); -webkit-backdrop-filter: blur(20px) saturate(140%); backdrop-filter: blur(20px) saturate(140%); }
+  @media (prefers-color-scheme: dark) { .toolbar { background: rgba(20,20,24,0.5); } }
+  .brand { display: flex; align-items: center; gap: 9px; padding-right: 10px; font: 600 15px var(--font-serif); white-space: nowrap; }
+  .divider { width: 1px; height: 16px; background: var(--border); margin: 0 4px; }
+  .chip-btn { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px 4px 8px; border-radius: 7px; font-size: 11.5px; font-weight: 600;
+    background: var(--hover); border: 0.5px solid var(--border); white-space: nowrap; }
+  .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); flex: none; }
+  .pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 999px; font-size: 9.5px; font-weight: 600;
+    letter-spacing: .06em; text-transform: uppercase; color: var(--matcha); white-space: nowrap;
+    background: color-mix(in oklch, var(--matcha) 13%, transparent); border: 0.5px solid color-mix(in oklch, var(--matcha) 30%, transparent); }
+  .pill .dot { background: currentColor; }
+  .pill.waiting { color: var(--warn); background: color-mix(in oklch, var(--warn) 13%, transparent); border-color: color-mix(in oklch, var(--warn) 30%, transparent); }
+  .icon-btn { all: unset; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; min-width: 28px;
+    padding: 0 6px; box-sizing: border-box; border-radius: 7px; color: var(--muted); font-size: 11.5px; font-weight: 600; }
+  .icon-btn:hover { background: var(--hover); color: var(--fg); }
+
+  .zones { flex: 1; min-height: 0; display: flex; gap: 14px; padding: 14px; }
+  .glass { position: relative; background: var(--panel); border: 0.5px solid var(--border); border-radius: 18px;
+    -webkit-backdrop-filter: blur(20px) saturate(140%); backdrop-filter: blur(20px) saturate(140%);
+    box-shadow: 0 0 0 0.5px var(--border-strong) inset, 0 1px 0 var(--inset) inset, 0 4px 18px rgba(33,31,27,0.07); }
+  @media (prefers-color-scheme: dark) { .glass { box-shadow: 0 0 0 0.5px var(--border-strong) inset, 0 1px 0 var(--inset) inset, 0 6px 20px rgba(0,0,0,0.28); } }
+
+  /* left rail */
+  .rail { width: 196px; flex: none; padding: 14px 10px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
+  .rail-head { padding: 0 8px; display: flex; justify-content: space-between; align-items: center; }
+  .count { font-size: 9px; padding: 1px 5px; border-radius: 4px; background: var(--hover); color: var(--faint); letter-spacing: 0; }
+  .list { display: flex; flex-direction: column; gap: 2px; position: relative; }
+  .row-btn { all: unset; cursor: pointer; position: relative; display: flex; align-items: center; gap: 10px; padding: 7px 9px; border-radius: 9px;
+    font-size: 12.5px; font-weight: 500; color: var(--muted); }
+  .row-btn:hover { background: var(--hover); }
+  .row-btn.on { background: var(--hover); color: var(--fg); font-weight: 600; }
+  .row-btn.on::before { content: ""; position: absolute; left: -10px; top: 50%; transform: translateY(-50%); width: 3px; height: 16px; border-radius: 2px; background: var(--accent); }
+  .row-btn .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row-btn.child { padding-left: 22px; }
+  .badge { width: 26px; height: 26px; border-radius: 7px; flex: none; display: flex; align-items: center; justify-content: center;
+    background: var(--hover); color: var(--muted); font-size: 11px; font-weight: 700; }
+  .row-btn.on .badge { color: #fff; background: linear-gradient(160deg, color-mix(in oklch, var(--accent) 95%, white), var(--accent));
+    box-shadow: 0 0.5px 0 rgba(255,255,255,0.4) inset, 0 2px 6px color-mix(in oklch, var(--accent) 35%, transparent); }
+  .row-btn.add { color: var(--faint); font-size: 12px; }
+  .row-btn.add .badge { background: transparent; border: 1px dashed var(--border-strong); color: var(--faint); }
+  .pages { border-top: 0.5px solid var(--border); padding-top: 14px; }
+  .pages .rail-head { padding-bottom: 8px; }
+  .page-btn { padding: 6px 9px; border-radius: 7px; font-size: 12px; }
+  .num { width: 18px; height: 18px; border-radius: 5px; flex: none; display: flex; align-items: center; justify-content: center; font-size: 9.5px; font-weight: 700;
+    font-variant-numeric: tabular-nums; background: var(--hover); color: var(--faint); }
+  .page-btn.on .num { background: color-mix(in oklch, var(--accent) 22%, transparent); color: var(--accent); }
+  .page-btn.on::before { display: none; }
+  .mini { all: unset; cursor: pointer; width: 18px; height: 18px; border-radius: 5px; display: flex; align-items: center; justify-content: center; color: var(--faint); }
+  .mini:hover { background: var(--hover); color: var(--fg); }
+  .rail-foot { margin-top: auto; padding: 10px 8px 0; border-top: 0.5px solid var(--border); font-size: 10px; color: var(--faint); line-height: 1.5; }
+  .rail-foot .line { display: flex; align-items: center; gap: 5px; }
+  .rail-foot .line .dot { background: var(--matcha); }
+  .rail-foot b { color: var(--muted); font-weight: 500; }
+  .rail .menu { left: 8px; right: 8px; min-width: 0; }
+
+  /* center canvas */
+  .canvas { flex: 1; min-width: 0; padding: 64px 24px 0; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
+  .device { flex: 1; justify-content: center; padding-bottom: 18px; }
+  .tray { align-self: stretch; margin: 0 -24px; padding: 12px 18px 14px; border-top: 0.5px solid var(--border); border-radius: 0 0 18px 18px;
+    background: color-mix(in srgb, var(--bg) 70%, transparent); display: flex; flex-direction: column; gap: 6px; }
+  .tray .field { flex-direction: row; align-items: center; gap: 10px; }
+  .tray .field > label { flex: none; }
+  .tray .field > div { flex: 1; }
+  .tray select.chip-add { flex: 0 1 170px; min-width: 90px; }
+  .corner { position: absolute; top: 16px; }
+  .corner.left { left: 16px; } .corner.right { right: 16px; }
+  .seg { display: inline-flex; padding: 3px; border: 0.5px solid var(--border); border-radius: 9px; }
+  .seg button { flex: none; padding: 4px 11px; font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+  .seg button .n { font-variant-numeric: tabular-nums; font-size: 10px; color: var(--faint); }
+  .seg button.on .n { color: var(--accent); }
+  .device { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .device .grid { gap: 12px; }
+  .device .row { gap: 12px; }
+  .device .key { all: unset; box-sizing: border-box; cursor: pointer; width: 84px; height: 84px; border-radius: 12px; display: grid; grid-template-rows: 1fr auto;
+    justify-items: center; align-items: center; row-gap: 6px; padding: 12px 6px 10px; background: rgba(0,0,0,0.025); box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08);
+    color: var(--fg); transition: background .15s ease, box-shadow .15s ease; }
+  @media (prefers-color-scheme: dark) { .device .key { background: rgba(255,255,255,0.035); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.09); } }
+  .device .key:hover { background: var(--hover); }
+  .device .key { position: relative; }
+  .device .key i { position: absolute; top: 6px; left: 8px; font: 600 10px/1 var(--font-serif); font-style: normal; color: var(--faint); }
+  .device .key .glyph { align-self: end; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; }
+  .device .key .glyph svg.i { width: 28px; height: 28px; stroke-width: 1.5; }
+  .device .key.unset .glyph svg.i { width: 16px; height: 16px; color: var(--faint); }
+  .device .key.on i { color: var(--accent); }
+  .device .key span { font-size: 10px; font-weight: 500; line-height: 1.25; color: var(--muted); max-width: 100%; padding: 0 4px; box-sizing: border-box;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .device .key:not(.own) .glyph { opacity: .55; }
+  .device .key.unset { background: transparent; box-shadow: none; border: 1px dashed var(--border-strong); }
+  .device .key.on { box-shadow: 0 0 0 1.5px var(--accent), 0 0 0 4px color-mix(in oklch, var(--accent) 22%, transparent); }
+  .meta { display: flex; gap: 10px; align-items: center; font-size: 11px; color: var(--muted); }
+  .meta .sep { opacity: .5; }
+
+  /* right inspector */
+  .inspector { width: 300px; flex: none; padding: 14px; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+  .ins-head { display: flex; align-items: center; gap: 10px; }
+  .ins-tile { width: 36px; height: 36px; border-radius: 9px; flex: none; display: flex; align-items: center; justify-content: center;
+    background: var(--hover); border: 1px solid var(--border); }
+  .ins-tile svg.i { width: 20px; height: 20px; stroke-width: 1.6; }
+  .ins-title { font-size: 14px; font-weight: 600; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ins-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; margin: 0 -4px; padding: 0 4px; }
+  .field { display: flex; flex-direction: column; align-items: stretch; gap: 5px; margin: 0; }
+  .field > label { text-align: left; font-size: 9.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); }
+  .inspector select, .inspector input, .inspector textarea { background: var(--well); border: 0.5px solid var(--border-strong); border-radius: 8px; padding: 7px 9px; font-size: 12px; width: 100%; }
+  .inspector .bar > * { min-width: 0; }
+  .ins-foot { display: flex; gap: 6px; align-items: center; padding-top: 10px; border-top: 0.5px solid var(--border); }
+  .ins-foot .btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 10px; border-radius: 7px; font-size: 11.5px; font-weight: 600; border-width: 0.5px; }
+  .btn.danger { background: transparent; color: oklch(0.6 0.18 25); border-color: oklch(0.6 0.18 25 / 0.4); }
+
+  /* adaptive: narrower windows shrink the side panels, then stack everything in one scrolling column */
+  .device .key { width: clamp(64px, 7vw, 84px); height: clamp(64px, 7vw, 84px); }
+  @media (max-width: 1080px) {
+    .rail { width: 168px; } .inspector { width: 260px; }
+    .icon-btn .t { display: none; }
+  }
+  @media (max-width: 860px) {
+    body { overflow: auto; }
+    #root { flex: none; }
+    .zones { flex-direction: column; overflow: visible; min-height: auto; }
+    .rail { width: auto; flex-direction: row; flex-wrap: wrap; gap: 14px; overflow: visible; }
+    .rail > div { flex: 1 1 220px; }
+    .rail-foot { margin-top: 0; border-top: 0; padding-top: 0; }
+    .pages { border-top: 0; padding-top: 0; }
+    .canvas { min-height: 460px; padding-top: 60px; }
+    .inspector { width: auto; }
+    .ins-body { overflow: visible; }
+  }
+  @media (max-width: 520px) {
+    .corner.right { top: 52px; left: 16px; right: auto; }
+    .canvas { padding-top: 96px; }
+    .tray .field { flex-direction: column; align-items: stretch; }
+  }
+  .warn-line { font-size: 11px; }
+</style></head>
+<body><div id="root"></div>
 <script src="common.js"></script>
 <script>
 /** Built into the app; every other action type is a plugin. */
@@ -184,7 +343,7 @@ function tileName(a) {
   return o ? `${p.name}: ${o.label}` : p.name;
 }
 
-/** Tiles above the buttons on the phone companion. A profile uses the default ones until it changes them;
+/** Tiles under the buttons on the phone companion. A profile uses the default ones until it changes them;
  * a game's profile adds its own to its app's (Boosteroid · Last Epoch shows Boosteroid's too). */
 function displayBar() {
   const mine = profile() ? cfg().profiles[profile()].displays : cfg().displays ?? [];
@@ -196,10 +355,12 @@ function displayBar() {
   const tileOptions = (p) => p.run ? [] : p.fields[0]?.options?.filter((o) => !o.run) ?? [];
   return field("Phone shows",
     el("div", { class: "bar", style: "flex-wrap: wrap" },
-      (inherited ?? []).map((a) => el("span", { class: "muted", title: `From ${fallbackName()}` }, tileName(a))),
-      displays.map((a, i) => el("button", { class: "btn", title: "Remove from the phone",
-        onclick: () => set(displays.filter((_, j) => j !== i)) }, `${tileName(a)} ✕`)),
-      el("select", { onchange: (e) => e.target.value && set([...displays, JSON.parse(e.target.value)]) },
+      // inherited tiles are dashed and muted, like the phone draws keys from a fallback profile
+      (inherited ?? []).map((a) => el("span", { class: "chip inherited", title: `From ${fallbackName()}` }, tileName(a))),
+      displays.map((a, i) => el("span", { class: "chip" }, tileName(a),
+        el("button", { title: "Remove from the phone", "aria-label": `Remove ${tileName(a)}`,
+          onclick: () => set(displays.filter((_, j) => j !== i)) }, "✕"))),
+      el("select", { class: "chip-add", onchange: (e) => e.target.value && set([...displays, JSON.parse(e.target.value)]) },
         el("option", { value: "" }, "Add…"),
         // one tile per such choice; a plugin whose live only tells the game (contextFor) has no tile otherwise
         addable.map((p) => tileOptions(p).length
@@ -209,70 +370,181 @@ function displayBar() {
         : el("span", { class: "muted" }, `(${fallbackName()})`))));
 }
 
-function profileBar() {
-  const profiles = Object.entries(cfg().profiles).sort((a, b) => a[1].name.localeCompare(b[1].name));
-  const addable = S.recentApps.filter((a) => !cfg().profiles[a.id]);
-  const plus = el("button", { class: "btn", title: "Add a profile for an app", onclick: () => { menuOpen = !menuOpen; render(); } }, "+");
-  return el("div", { class: "bar", style: "position: relative" },
-    el("select", { class: "grow", onchange: (e) => { profileId = e.target.value || null; render(); } },
-      el("option", { value: "" }, "Default"),
-      profiles.map(([id, p]) => el("option", { value: id, selected: id === profile() }, p.name))),
-    plus,
-    el("button", { class: "btn", title: "Delete this profile", disabled: !profile(), onclick: async () => {
-      const name = cfg().profiles[profile()].name;
-      if (!confirm(`Delete the ${name} profile? Its button actions are removed. Buttons go back to the default actions in that app.`)) return;
-      await invoke("delete_profile", { id: profile() });
-      profileId = null;
-    } }, "−"),
-    menuOpen && el("div", { class: "menu", style: "right: 30px; top: 32px" },
-      addable.map((a) => el("button", { onclick: () => addProfile(a) }, a.name)),
-      addable.length > 0 && el("hr"),
-      el("button", { onclick: async () => { const a = await invoke("pick_app"); if (a) addProfile(a); else { menuOpen = false; render(); } } }, "Choose App…")));
+const ICONS = {
+  home: '<path d="M3 11l9-8 9 8v9a2 2 0 0 1-2 2h-4v-7h-6v7H5a2 2 0 0 1-2-2v-9z"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  layers: '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5M3 18l9 5 9-5"/>',
+  trash: '<path d="M5 7h14M9 7V4h6v3M7 7l1 13a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2l1-13"/>',
+  play: '<path d="M7 5l12 7-12 7z"/>',
+  arrowD: '<path d="M12 5v14M6 13l6 6 6-6"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+  app: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+  cmd: '<path d="M8 8a2 2 0 1 1 2-2v12a2 2 0 1 1-2-2h8a2 2 0 1 1-2 2V6a2 2 0 1 1 2 2H8z"/>',
+  terminal: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M13 15h4"/>',
+  keyboard: '<rect x="2" y="6" width="20" height="13" rx="2"/><path d="M6 10h0M10 10h0M14 10h0M18 10h0M6 14h0M10 14h0M14 14h0M18 14h0M7 17h10"/>',
+  lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  spark: '<path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/>',
+  zap: '<path d="M13 3L4 14h7l-1 7 9-11h-7z"/>',
+  reset: '<path d="M4 12a8 8 0 1 0 3-6"/><path d="M4 4v5h5"/>',
+  next: '<path d="M5 5l10 7-10 7z"/><path d="M17 5v14"/>',
+  prev: '<path d="M19 5l-10 7 10 7z"/><path d="M7 5v14"/>',
+  broadcast: '<circle cx="12" cy="12" r="2"/><path d="M8 8a6 6 0 0 0 0 8M16 8a6 6 0 0 1 0 8M5 5a10 10 0 0 0 0 14M19 5a10 10 0 0 1 0 14"/>',
+};
+/** The design's action categories (data.js): colour per category, icon per action type. */
+const CATEGORY = { browser: "oklch(0.50 0.075 250)", system: "oklch(0.53 0.07 135)", media: "oklch(0.57 0.11 38)", shortcut: "oklch(0.52 0.075 315)" };
+const TYPE_LOOK = {
+  url: ["globe", "browser"], app: ["app", "system"], input: ["globe", "system"], vpn: ["zap", "system"], media: ["play", "media"],
+  key: ["cmd", "shortcut"], type: ["keyboard", "shortcut"], password: ["lock", "shortcut"], script: ["terminal", "shortcut"], repeat: ["reset", "shortcut"],
+};
+/** Icon and colour for an action; System's page buttons get arrows, plugins without a mapping a spark. */
+function look(a) {
+  if (a.type === "system" && a.value === "nextpage") return ["next", CATEGORY.system];
+  if (a.type === "system" && a.value === "prevpage") return ["prev", CATEGORY.system];
+  const [name, cat] = TYPE_LOOK[a.type] ?? ["spark", pluginFor(a.type)?.contextFor ? "media" : "system"];
+  return [name, CATEGORY[cat]];
+}
+function icon(name) {
+  const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  s.setAttribute("viewBox", "0 0 24 24");
+  s.setAttribute("class", "i");
+  s.innerHTML = ICONS[name];
+  return s;
 }
 
-/** Pages 1..last, plus the one being set up; "+" opens an empty page after them (it's kept once a button is set). */
-function pageBar() {
+/** Panna Cotta's plate mark: a 3×3 of dots with the vermilion one in the middle. */
+function brandMark() {
+  const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  s.setAttribute("viewBox", "0 0 100 100");
+  s.setAttribute("width", "22"); s.setAttribute("height", "22");
+  s.innerHTML = '<rect width="100" height="100" rx="24" fill="#EFE7D6"/><circle cx="50" cy="50" r="31" fill="#F6F1E8" stroke="#211F1B" stroke-opacity="0.16" stroke-width="1.4"/>'
+    + [35, 50, 65].flatMap((y, r) => [35, 50, 65].map((x, c) => r === 1 && c === 1
+      ? `<circle cx="${x}" cy="${y}" r="4.8" fill="#C8472E"/>` : `<circle cx="${x}" cy="${y}" r="3.8" fill="#211F1B" fill-opacity="0.82"/>`)).join("");
+  return s;
+}
+
+const connected = () => S.status.startsWith("Listening");
+
+function toolbar() {
+  return el("div", { class: "toolbar" },
+    el("div", { class: "brand" }, brandMark(), "ConsoleDeck"),
+    el("div", { class: "divider" }),
+    el("span", { class: "chip-btn", title: "Profile being edited" }, el("span", { class: "dot" }),
+      profile() ? cfg().profiles[profile()].name : "Default"),
+    el("div", { style: "flex: 1" }),
+    el("span", { class: `pill${connected() ? "" : " waiting"}`, title: S.status }, el("span", { class: "dot" }),
+      connected() ? "Deck connected" : "No deck"),
+    el("div", { class: "divider" }),
+    el("button", { class: "icon-btn", title: "Install and manage action plugins", onclick: () => invoke("show_plugins") }, icon("layers"), el("span", { class: "t" }, "Plugins")));
+}
+
+/** Initials for a profile's badge: "Boosteroid · Last Epoch" -> "LE". */
+const initials = (name) => (name.split(" · ").pop().match(/\b\w/g) ?? ["?"]).slice(0, 2).join("").toUpperCase();
+
+function profilesRail() {
+  // a game's profile ("app/Game") sits under its app's
+  const entries = Object.entries(cfg().profiles)
+    .sort((a, b) => (parentOf(a[0]) ? cfg().profiles[parentOf(a[0])]?.name + a[1].name : a[1].name)
+      .localeCompare(parentOf(b[0]) ? cfg().profiles[parentOf(b[0])]?.name + b[1].name : b[1].name));
+  const addable = S.recentApps.filter((a) => !cfg().profiles[a.id]);
+  const pick = (id) => { profileId = id; page = 1; recording = false; menuOpen = false; render(); };
   const count = Math.max(pageCount(cfg(), profile()), page);
   const go = (p) => { page = p; recording = false; render(); };
-  return el("div", { class: "seg" },
-    Array.from({ length: count }, (_, i) => el("button", { class: i + 1 === page ? "on" : "", onclick: () => go(i + 1) }, `Page ${i + 1}`)),
-    el("button", { title: "Add a page; give a button Next Page (System) to reach it", onclick: () => go(count + 1) }, "+"));
+  return el("div", { class: "glass rail" },
+    el("div", {},
+      el("div", { class: "rail-head label" }, el("span", {}, "Profiles"), el("span", { class: "count" }, `${entries.length + 1}`)),
+      el("div", { class: "list", style: "margin-top: 10px" },
+        el("button", { class: `row-btn${!profile() ? " on" : ""}`, onclick: () => pick(null) },
+          el("div", { class: "badge" }, icon("home")), el("span", { class: "name" }, "Default")),
+        entries.map(([id, p]) => el("button", { class: `row-btn${id === profile() ? " on" : ""}${parentOf(id) ? " child" : ""}`, title: id, onclick: () => pick(id) },
+          el("div", { class: "badge" }, initials(p.name)), el("span", { class: "name" }, p.name.split(" · ").pop()))),
+        el("button", { class: "row-btn add", title: "Add a profile for an app", onclick: () => { menuOpen = !menuOpen; render(); } },
+          el("div", { class: "badge" }, icon("plus")), "New profile"),
+        menuOpen && el("div", { class: "menu", style: "top: 100%" },
+          addable.map((a) => el("button", { onclick: () => addProfile(a) }, a.name)),
+          addable.length > 0 && el("hr"),
+          el("button", { onclick: async () => { const a = await invoke("pick_app"); if (a) addProfile(a); else { menuOpen = false; render(); } } }, "Choose App…")))),
+    el("div", { class: "pages" },
+      el("div", { class: "rail-head label" },
+        el("span", {}, `Pages · ${profile() ? cfg().profiles[profile()].name.split(" · ").pop() : "Default"}`),
+        el("button", { class: "mini", title: "Add a page; give a button Next Page (System) to reach it", onclick: () => go(count + 1) }, icon("plus"))),
+      el("div", { class: "list" }, Array.from({ length: count }, (_, i) => {
+        const set = Object.keys(profile() ? cfg().profiles[profile()].buttons : cfg().buttons).filter((k) => pageOf(k) === i + 1 && !k.includes(".long") && !k.includes(".double")).length;
+        return el("button", { class: `row-btn page-btn${i + 1 === page ? " on" : ""}`, onclick: () => go(i + 1) },
+          el("span", { class: "num" }, `${i + 1}`), `Page ${i + 1}`, el("span", { style: "flex: 1" }), el("span", { class: "count" }, `${set}`));
+      }))),
+    el("div", { class: "rail-foot" },
+      el("div", { class: "line" }, el("span", { class: "dot" }), el("b", {}, "Saved to deck.json")),
+      profile() && el("button", { class: "icon-btn", style: "height: 24px; padding: 0; margin-top: 4px; font-size: 10.5px", title: "Delete this profile", onclick: async () => {
+        const name = cfg().profiles[profile()].name;
+        if (!confirm(`Delete the ${name} profile? Its button actions are removed. Buttons go back to the default actions in that app.`)) return;
+        await invoke("delete_profile", { id: profile() });
+        profileId = null;
+      } }, icon("trash"), "Delete profile")));
 }
 
-function render() {
+function canvas() {
+  const set = LAYOUT.flat().filter((n) => effective(n).type !== "none").length;
+  return el("div", { class: "glass canvas" },
+    el("div", { class: "corner left" }, el("div", { class: "seg" },
+      Array.from({ length: Math.max(pageCount(cfg(), profile()), page) }, (_, i) =>
+        el("button", { class: i + 1 === page ? "on" : "", onclick: () => { page = i + 1; recording = false; render(); } },
+          `Page ${i + 1}`)))),
+    el("div", { class: "corner right" }, el("div", { class: "seg" }, GESTURES.map(([g, title]) =>
+      el("button", { class: g === gesture ? "on" : "", onclick: () => { gesture = g; recording = false; render(); } }, title)))),
+    el("div", { class: "device" },
+      el("div", { class: "grid" }, LAYOUT.map((row) => el("div", { class: "row" }, row.map((n) => {
+        const a = effective(n);
+        const unset = a.type === "none";
+        const [name, color] = look(a);
+        // own = set by this profile (or Default); unset = does nothing
+        const cls = ["key", n === selected && "on", (!profile() || own(n)) && "own", unset && "unset"].filter(Boolean).join(" ");
+        const ic = icon(unset ? "plus" : name);
+        if (!unset) ic.style.color = color;
+        return el("button", { class: cls, title: `Button ${n}`, onclick: () => { selected = n; recording = false; render(); } },
+          el("i", {}, `${n}`), el("div", { class: "glyph" }, ic), el("span", {}, unset ? "" : shortLabel(a)));
+      })))),
+      el("div", { class: "meta" },
+        el("span", { class: `pill${connected() ? "" : " waiting"}` }, el("span", { class: "dot" }), "Live"),
+        el("span", { class: "sep" }, "·"), el("span", {}, "3-3-4"),
+        el("span", { class: "sep" }, "·"), el("span", {}, `${set} of 10 set`))),
+    // not in the design: the phone's live tiles belong to the profile, so they sit under its deck like the phone's docked strip
+    el("div", { class: "tray" }, displayBar(), note("Live tiles under the buttons on the Phone Companion. They don't use a button.")));
+}
+
+function inspector() {
   const kind = own(selected)?.type ?? (profile() ? "inherit" : "none");
   const eff = effective(selected);
   const effPlugin = pluginFor(eff.type);
   const typesIntoFrontApp = eff.type === "repeat" || TYPES_INTO_FRONT_APP.some((k) => k in (osRun(effPlugin?.run) ?? {}));
   const gestureTitle = GESTURES.find(([g]) => g === gesture)[1];
   const calibrated = Object.values(cfg().pins).includes(selected);
-  document.getElementById("root").replaceChildren(
-    profileBar(),
-    pageBar(),
-    el("div", { class: "seg" }, GESTURES.map(([g, title]) =>
-      el("button", { class: g === gesture ? "on" : "", onclick: () => { gesture = g; recording = false; render(); } }, title))),
-    deckGrid({
-      label: (n) => shortLabel(effective(n)),
-      cls: (n) => [n === selected && "on", (!profile() || own(n)) && "own"].filter(Boolean).join(" "),
-      onTap: (n) => { selected = n; recording = false; render(); },
-    }),
-    el("hr"),
-    field(gesture === "press" ? `Button ${selected} does` : `${gestureTitle} ${selected} does`,
-      el("select", { onchange: (e) => setKind(e.target.value) },
-        profile() && el("option", { value: "inherit", selected: kind === "inherit" }, `Use ${fallbackName()}`),
-        kinds(kind).map(([k, label]) => el("option", { value: k, selected: k === kind }, label)))),
-    ...[valueEditor(kind)].flat().filter(Boolean),
-    el("div", { class: "bar" },
-      el("button", { class: "btn", title: "Install and manage action plugins", onclick: () => invoke("show_plugins") }, "Plugins…"),
-      !calibrated && el("span", { class: "warn" }, "⚠ Not calibrated yet"),
-      el("span", { class: "grow small muted" }, gesture === "press" ? "" : "Buttons with long or double actions wait a moment to tell presses apart."),
+  const title = shortLabel(eff);
+  return el("div", { class: "glass inspector" },
+    el("div", { class: "ins-head" },
+      (() => { const [name, color] = look(eff); const t = el("div", { class: "ins-tile" }, icon(eff.type === "none" ? "plus" : name));
+        t.style.color = eff.type === "none" ? "var(--faint)" : color; return t; })(),
+      el("div", { style: "flex: 1; min-width: 0" },
+        el("div", { class: "label" }, `Button ${selected} · ${gestureTitle}`),
+        el("div", { class: "ins-title" }, title === "–" ? "Does nothing" : title))),
+    el("div", { class: "ins-body" },
+      field("Action",
+        el("select", { onchange: (e) => setKind(e.target.value) },
+          profile() && el("option", { value: "inherit", selected: kind === "inherit" }, `Use ${fallbackName()}`),
+          kinds(kind).map(([k, label]) => el("option", { value: k, selected: k === kind }, label)))),
+      ...[valueEditor(kind)].flat().filter(Boolean),
+      !calibrated && el("div", { class: "warn warn-line" }, "⚠ Not calibrated yet"),
+      gesture !== "press" && note("Buttons with long or double actions wait a moment to tell presses apart.")),
+    el("div", { class: "ins-foot" },
       el("button", { class: "btn", disabled: !eff.value || typesIntoFrontApp || (eff.type !== "repeat" && !effPlugin),
-        title: typesIntoFrontApp ? "Goes to the app in front; press the deck button in that app to test" : "",
-        onclick: () => invoke("test_action", { action: eff }) }, "Test")),
-    el("hr"),
-    displayBar(),
-    note("Live tiles over the buttons on the Phone Companion. They don't use a button."),
-  );
+        title: typesIntoFrontApp ? "Goes to the app in front; press the deck button in that app to test" : "Run it now",
+        onclick: () => invoke("test_action", { action: eff }) }, icon("play"), "Test"),
+      el("div", { style: "flex: 1" }),
+      el("button", { class: "btn danger", disabled: !own(selected), title: profile() ? `Use ${fallbackName()} again` : "Make it do nothing",
+        onclick: () => setOwn(null) }, icon("trash"), "Clear")));
+}
+
+function render() {
+  document.getElementById("root").replaceChildren(toolbar(), el("div", { class: "zones" }, profilesRail(), canvas(), inspector()));
 }
 
 live((state) => {

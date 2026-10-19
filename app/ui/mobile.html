@@ -6,49 +6,92 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Deck">
-<meta name="theme-color" content="#000000">
+<meta name="theme-color" content="#EFE7D6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15161a" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="/manifest.webmanifest?t={{TOKEN}}">
 <link rel="apple-touch-icon" href="/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-  :root { --bg: #000; --fg: #f2f2f7; --muted: #8e8e93; --key: #1c1c1e; --own: #2c2c2e; --accent: #0a84ff; --warn: #ff9f0a; }
+  /* Zen tokens: washi paper (light) and sumi ink (dark), after the Panna Cotta panel design */
+  :root { --bg: #EFE7D6; --fg: #211F1B; --muted: #6f675a; --key: #F6F1E8; --line: rgba(33,31,27,0.12); --dash: rgba(33,31,27,0.22);
+    --tray: rgba(229,219,199,0.97); --shadow: 0 1px 3px rgba(33,31,27,0.10); --accent: #C8472E; --matcha: #6E7F4B; --offline: #9a5a4d; --skel: rgba(33,31,27,0.05); }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #15161a; --fg: #ece7dc; --muted: #9b9484; --key: #1d1f24; --line: rgba(255,255,255,0.08); --dash: rgba(255,255,255,0.20);
+      --tray: rgba(21,22,26,0.97); --shadow: 0 1px 3px rgba(0,0,0,0.4); --matcha: rgba(123,143,86,0.95); --offline: #caa; --skel: rgba(255,255,255,0.05); }
+  }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); overflow: hidden;
-    font: 15px/1.3 -apple-system, system-ui, sans-serif; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-  body { display: flex; flex-direction: column; gap: 2.5vmin;
-    padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
-  header { display: flex; align-items: baseline; gap: 10px; }
-  h1 { margin: 0; font-size: 22px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    font: 15px/1.3 "Zen Kaku Gothic New", -apple-system, system-ui, sans-serif; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  body { display: flex; flex-direction: column; gap: clamp(0.5rem, 2.2vw, 1rem);
+    padding: max(12px, env(safe-area-inset-top)) max(clamp(0.7rem, 3.4vw, 1.2rem), env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(clamp(0.7rem, 3.4vw, 1.2rem), env(safe-area-inset-left)); }
+  header { display: flex; align-items: center; gap: 9px; }
+  h1 { margin: 0; font: 600 1.15rem "Shippori Mincho", "Hiragino Mincho ProN", serif; letter-spacing: 0.01em; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .muted { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--warn); flex: none; align-self: center; }
-  .dot.live { background: #30d158; }
-  .grid { flex: 1; display: flex; flex-direction: column; gap: 2.5vmin; min-height: 0; }
-  .row { flex: 1; display: flex; gap: 2.5vmin; min-height: 0; }
-  .key { flex: 1; min-width: 0; border-radius: 14px; background: var(--key); padding: 8px 10px; display: flex; flex-direction: column;
-    justify-content: center; overflow: hidden; transition: background .08s, transform .08s; }
-  .key.own { background: var(--own); }
-  .key.down { background: var(--accent); transform: scale(.96); }
-  .key b { font-size: 12px; color: var(--muted); }
-  .key.down b, .key.down small { color: #fff; }
-  .key span { font-size: clamp(13px, 3.6vmin, 22px); font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+
+  /* connection lozenge: Live (matcha, pulsing) · Linking · Offline (spinner) */
+  .status { flex: none; display: flex; align-items: center; gap: 6px; height: 22px; padding-right: 10px; border-right: 1px solid var(--line);
+    color: var(--muted); font-size: 10.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+  .status[data-mode="live"] { color: var(--matcha); }
+  .status[data-mode="offline"] { color: var(--offline); }
+  .status i { position: relative; width: 8px; height: 8px; }
+  .status i::before, .status i::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: currentColor; }
+  .status i::after { opacity: 0; }
+  .status[data-mode="live"] i::after { animation: ping 1.6s cubic-bezier(.2,.7,.3,1) infinite; }
+  .status:not([data-mode="live"]) i { width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--line); border-top-color: currentColor; animation: spin .8s linear infinite; }
+  .status:not([data-mode="live"]) i::before, .status:not([data-mode="live"]) i::after { display: none; }
+  @keyframes ping { 0% { transform: scale(1); opacity: .55; } 80%, 100% { transform: scale(2.6); opacity: 0; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .grid { flex: 1; display: flex; flex-direction: column; gap: clamp(0.5rem, 2.2vw, 1rem); min-height: 0; transition: opacity .3s ease; }
+  .row { flex: 1; display: flex; gap: clamp(0.5rem, 2.2vw, 1rem); min-height: 0; }
+  /* keys: solid washi cards; the front app's own keys (vs the default's) get a vermilion edge; empty = faint dashed slot */
+  .key { flex: 1; min-width: 0; border-radius: 12px; padding: 8px 10px; display: flex; flex-direction: column; justify-content: center; overflow: hidden;
+    background: var(--key); border: 1px solid var(--line); box-shadow: var(--shadow); color: var(--fg);
+    transition: background .12s ease, transform .12s ease, opacity .25s ease, filter .25s ease; }
+  .key.own { box-shadow: inset 3px 0 0 var(--accent), var(--shadow); }
+  .key.empty { background: transparent; border: 1px dashed var(--dash); box-shadow: none; }
+  .key.down { background: var(--accent); border-color: var(--accent); color: #fff; transform: scale(.95); box-shadow: none; }
+  .key b { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: 0.04em; }
+  .key.down b, .key.down small { color: rgba(255,255,255,0.85); }
+  .key span { font-size: clamp(13px, 3.6vmin, 22px); font-weight: 500; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
   .key small { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .key.empty span { color: var(--muted); font-weight: 400; }
-  .displays { flex: 0 0 18%; }
+  .key.empty span { color: var(--muted); font-weight: 400; opacity: .5; }
+  .key.shows span { font-variant-numeric: tabular-nums; font-weight: 700; }
+
+  /* live tiles: a tray docked under the buttons, lighter than them (the design's strip) */
+  .displays { flex: 0 0 18%; padding: 8px; margin: 0 calc(-1 * clamp(0.7rem, 3.4vw, 1.2rem)); padding-inline: clamp(0.7rem, 3.4vw, 1.2rem);
+    background: var(--tray); border-block: 1px solid var(--line); -webkit-backdrop-filter: blur(12px) saturate(140%); backdrop-filter: blur(12px) saturate(140%); }
+  .displays .key { animation: rise .34s cubic-bezier(.2,.9,.3,1) both; }
+  .displays .key:nth-child(2) { animation-delay: 45ms; } .displays .key:nth-child(3) { animation-delay: 90ms; } .displays .key:nth-child(4) { animation-delay: 135ms; }
+  .displays.steady .key { animation: none; }
+  @keyframes rise { from { opacity: 0; transform: translateY(7px) scale(0.96); } to { opacity: 1; transform: none; } }
   [hidden] { display: none !important; }
-  .key.live { position: relative; }
+  .key.live { position: relative; background: var(--key); border: 1px solid var(--line); box-shadow: var(--shadow); color: var(--fg); }
   .key.live b, .key.live span { position: relative; } /* over the chart */
   .key.live svg { position: absolute; inset: auto 0 0 0; width: 100%; height: 60%; }
   .key.live polyline { fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
-  #update { border: 0; border-radius: 10px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; padding: 10px; }
-  .key.live span { font-size: clamp(16px, 6vmin, 36px); line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .key.live span { font-size: clamp(16px, 6vmin, 36px); line-height: 1.1; font-variant-numeric: tabular-nums; font-weight: 700; }
+
+  /* offline: last-known state stays, dimmed and desaturated, so it reads as stale */
+  body.offline .grid, body.offline .displays .key { opacity: .4; filter: saturate(.55); }
+
+  #update { border: 0; border-radius: 999px; background: var(--accent); color: #fff; font: inherit; font-weight: 700; padding: 10px 16px; box-shadow: var(--shadow); }
   footer { display: flex; gap: 12px; }
   footer .muted { flex: 1; }
-  #repeat { color: var(--warn); }
+  #repeat { color: var(--accent); }
+  /* before the first update: shimmering placeholders hold the grid's footprint */
+  .key.skel { border: 0; background-color: var(--skel); background-image: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
+    background-size: 180px 100%; background-repeat: no-repeat; animation: shim 1.3s ease-in-out infinite; }
+  @keyframes shim { 0% { background-position: -180px 0; } 100% { background-position: 220px 0; } }
+  @media (prefers-reduced-motion: reduce) { .status i::after, .displays .key, .key.skel { animation: none !important; } }
 </style></head>
 <body>
-<header><div id="dot" class="dot"></div><h1 id="profile">ConsoleDeck</h1><div id="front" class="muted"></div></header>
+<header><div id="status" class="status" data-mode="linking"><i></i><span id="status-label">Linking</span></div><h1 id="profile">ConsoleDeck</h1><div id="front" class="muted"></div></header>
 <button id="update" hidden onclick="location.reload()">ConsoleDeck was updated: tap to reload</button>
-<div id="displays" class="row displays" hidden></div>
 <div id="grid" class="grid"></div>
+<div id="displays" class="row displays" hidden></div>
 <footer><div id="last" class="muted"></div><div id="repeat" class="muted"></div></footer>
 <script>
 const LAYOUT = [[1, 2, 3], [4, 5, 6], [7, 8, 9, 10]]; // physical 3-3-4, same as the desktop windows
@@ -58,8 +101,8 @@ const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls)
 // A live line "26%<TAB>0.26" also gets a chart: one line per tab-separated number (green, then red), the last
 // SAMPLES seconds, kept here, so a reload starts it over. The top is 1, or the biggest number shown (bytes/s).
 const SAMPLES = 60;
-const COLORS = ["#30d158", "#ff453a", "#0a84ff"];
-let latest, charts = {}; // by tile label, so a profile with other tiles keeps them apart; not "history": that is window.history
+const COLORS = ["#6E7F4B", "#C8472E", "#2B4A6E"]; // matcha, vermilion, indigo
+let latest, shownTiles, charts = {}; // by tile label, so a profile with other tiles keeps them apart; not "history": that is window.history
 setInterval(() => {
   if (!latest) return;
   charts = Object.fromEntries(latest.displays.map((d) => {
@@ -99,6 +142,9 @@ function render(s) {
   latest = s;
   $("update").hidden = s.page === "{{PAGE}}";
   $("displays").hidden = !s.displays.length;
+  const tiles = s.displays.map((d) => d.label).join("\n");
+  $("displays").classList.toggle("steady", tiles === shownTiles);
+  shownTiles = tiles;
   $("displays").replaceChildren(...s.displays.map((d) => {
     const [text, ...numbers] = (d.live ?? "…").split("\t");
     const c = el("div", "key live");
@@ -111,9 +157,10 @@ function render(s) {
     const r = el("div", "row");
     r.append(...row.map((n) => {
       const k = keys[n];
-      const c = el("div", `key${k.own ? " own" : ""}${k.press ? "" : " empty"}${s.held.includes(n) ? " down" : ""}`);
-      c.append(el("b", null, n), el("span", null, k.press || "–"));
-      const extra = [k.long && "Long: " + k.long, k.double && "Double: " + k.double].filter(Boolean).join(" · ");
+      const c = el("div", `key${k.own ? " own" : ""}${k.press ? "" : " empty"}${k.live ? " shows" : ""}${s.held.includes(n) ? " down" : ""}`);
+      // a live press action shows its line (Boosteroid's AFK countdown), its label goes small
+      c.append(el("b", null, n), el("span", null, k.live?.split("\t")[0] || k.press || "–"));
+      const extra = [k.live && k.press, k.long && "Long: " + k.long, k.double && "Double: " + k.double].filter(Boolean).join(" · ");
       if (extra) c.append(el("small", null, extra));
       return c;
     }));
@@ -122,14 +169,21 @@ function render(s) {
 }
 
 // iOS kills the stream when the app is in the background and may not reopen it: start a fresh one on return.
+function setStatus(mode) {
+  $("status").dataset.mode = mode;
+  $("status-label").textContent = { live: "Live", linking: "Linking", offline: "Offline" }[mode];
+  document.body.classList.toggle("offline", mode === "offline");
+}
+
 let es;
 function connect() {
   es?.close();
   es = new EventSource("/events?t={{TOKEN}}");
-  es.onopen = () => $("dot").classList.add("live");
-  es.onerror = () => $("dot").classList.remove("live");
+  es.onopen = () => setStatus("live");
+  es.onerror = () => setStatus("offline"); // EventSource retries on its own; the last state stays, dimmed
   es.onmessage = (e) => render(JSON.parse(e.data));
 }
+$("grid").replaceChildren(...LAYOUT.map((row) => { const r = el("div", "row"); r.append(...row.map(() => el("div", "key skel"))); return r; }));
 document.addEventListener("visibilitychange", () => { if (!document.hidden && es.readyState !== EventSource.OPEN) connect(); });
 connect();
 </script></body></html>

@@ -105,16 +105,16 @@ fn live_line(app: &AppHandle, key: Vec<String>, line: String) {
 
 fn show_window(app: &AppHandle, label: &str) {
     let window = app.get_webview_window(label).or_else(|| {
-        let (title, w, h) = match label {
-            "calibrate" => ("Calibrate ConsoleDeck", 380.0, 400.0),
-            "plugins" => ("ConsoleDeck Plugins", 480.0, 560.0),
-            "companion" => ("ConsoleDeck Phone Companion", 360.0, 520.0),
-            _ => ("ConsoleDeck Actions", 440.0, 540.0),
+        let (title, w, h, min_w) = match label {
+            "calibrate" => ("Calibrate ConsoleDeck", 380.0, 400.0, 380.0),
+            "plugins" => ("ConsoleDeck Plugins", 480.0, 560.0, 480.0),
+            "companion" => ("ConsoleDeck Phone Companion", 360.0, 520.0, 360.0),
+            _ => ("ConsoleDeck Actions", 1100.0, 680.0, 420.0), // three panels; the page stacks them below 860 wide
         };
         WebviewWindowBuilder::new(app, label, WebviewUrl::App(format!("{label}.html").into()))
             .title(title)
             .inner_size(w, h)
-            .min_inner_size(w, 300.0)
+            .min_inner_size(min_w, 300.0)
             .center()
             .build()
             .map_err(|e| log::error!("Cannot open {label}: {e}"))
@@ -127,6 +127,35 @@ fn show_window(app: &AppHandle, label: &str) {
     }
     #[cfg(target_os = "macos")]
     let _ = app.show(); // menu bar apps don't come to the front on their own
+}
+
+/// The phone page in a phone-sized window that stays on top, to see it without a phone.
+/// While the companion is off there is nothing to show, so its window opens to turn it on.
+fn preview_phone(app: &AppHandle) {
+    let companion = &app.state::<Shared>().companion;
+    if !companion.enabled() {
+        return show_window(app, "companion");
+    }
+    if let Some(w) = app.get_webview_window("preview") {
+        let _ = w.show();
+        let _ = w.set_focus();
+        return;
+    }
+    let Ok(url) = companion.local_url().parse() else { return };
+    let built = WebviewWindowBuilder::new(app, "preview", WebviewUrl::External(url))
+        .title("ConsoleDeck Phone Preview")
+        .inner_size(390.0, 760.0)
+        .min_inner_size(300.0, 400.0)
+        .always_on_top(true)
+        .build();
+    match built {
+        Ok(w) => {
+            let _ = w.set_focus();
+        }
+        Err(e) => log::error!("Cannot open phone preview: {e}"),
+    }
+    #[cfg(target_os = "macos")]
+    let _ = app.show();
 }
 
 /// Floating, click-through, non-focusable panel, so the front app (and its profile) keeps focus.
@@ -519,6 +548,7 @@ fn main() {
                 .text("calibrate", "Calibrate Buttons…")
                 .text("plugins", "Plugins…")
                 .text("companion", "Phone Companion…")
+                .text("preview", "Preview Phone")
                 .separator()
                 .item(&tray.login)
                 .text("config", reveal)
@@ -534,6 +564,7 @@ fn main() {
                 .menu(&menu)
                 .on_menu_event(|app, e| match e.id().as_ref() {
                     "actions" | "calibrate" | "plugins" | "companion" => show_window(app, e.id().as_ref()),
+                    "preview" => preview_phone(app),
                     "repeat" => update(app, |d| {
                         let combo = d.repeating.clone().unwrap_or_default();
                         d.toggle_repeat(&combo, Instant::now())
@@ -576,11 +607,14 @@ fn main() {
             std::thread::spawn(move || listen_forever(tx));
             let handle = app.handle().clone();
             std::thread::spawn(move || deck_loop(handle, rx));
-            let handle = app.handle().clone();
-            std::thread::spawn(move || loop {
-                check_for_update(&handle, false);
-                std::thread::sleep(Duration::from_secs(24 * 60 * 60)); // a tray app can run for weeks
-            });
+            // A debug build would offer to replace itself with the release; "Check for Updates…" still works.
+            if !cfg!(debug_assertions) {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || loop {
+                    check_for_update(&handle, false);
+                    std::thread::sleep(Duration::from_secs(24 * 60 * 60)); // a tray app can run for weeks
+                });
+            }
             Ok(())
         })
         .build(tauri::generate_context!())
