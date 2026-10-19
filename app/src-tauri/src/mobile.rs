@@ -77,6 +77,7 @@ pub struct MobileView {
     last_press: String,
     repeating: Option<String>,
     held: Vec<u8>,
+    dark: bool,
     keys: Vec<KeyView>,
     displays: Vec<DisplayView>,
 }
@@ -137,6 +138,7 @@ pub fn view(d: &Deck) -> MobileView {
         last_press: d.last_press.clone(),
         repeating: d.repeating.clone(),
         held: d.held(),
+        dark: d.dark,
         keys: POSITIONS
             .iter()
             .map(|&n| {

@@ -6,8 +6,15 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Deck">
-<meta name="theme-color" content="#EFE7D6" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#15161a" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#EFE7D6">
+<script>
+  // follows the computer's light/dark mode (sent with each state); the phone's own until the first one arrives
+  function setTheme(dark) {
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+    document.querySelector('meta[name="theme-color"]').content = dark ? "#15161a" : "#EFE7D6";
+  }
+  setTheme(matchMedia("(prefers-color-scheme: dark)").matches);
+</script>
 <link rel="manifest" href="/manifest.webmanifest?t={{TOKEN}}">
 <link rel="apple-touch-icon" href="/icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -17,10 +24,9 @@
   /* Zen tokens: washi paper (light) and sumi ink (dark), after the Panna Cotta panel design */
   :root { --bg: #EFE7D6; --fg: #211F1B; --muted: #6f675a; --key: #F6F1E8; --line: rgba(33,31,27,0.12); --dash: rgba(33,31,27,0.22);
     --tray: rgba(229,219,199,0.97); --shadow: 0 1px 3px rgba(33,31,27,0.10); --accent: #C8472E; --matcha: #6E7F4B; --offline: #9a5a4d; --skel: rgba(33,31,27,0.05); }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #15161a; --fg: #ece7dc; --muted: #9b9484; --key: #1d1f24; --line: rgba(255,255,255,0.08); --dash: rgba(255,255,255,0.20);
-      --tray: rgba(21,22,26,0.97); --shadow: 0 1px 3px rgba(0,0,0,0.4); --matcha: rgba(123,143,86,0.95); --offline: #caa; --skel: rgba(255,255,255,0.05); }
-  }
+  :root[data-theme="dark"] {
+    color-scheme: dark; --bg: #15161a; --fg: #ece7dc; --muted: #9b9484; --key: #1d1f24; --line: rgba(255,255,255,0.08); --dash: rgba(255,255,255,0.20);
+    --tray: rgba(21,22,26,0.97); --shadow: 0 1px 3px rgba(0,0,0,0.4); --matcha: rgba(123,143,86,0.95); --offline: #caa; --skel: rgba(255,255,255,0.05); }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); overflow: hidden;
     font: 15px/1.3 "Zen Kaku Gothic New", -apple-system, system-ui, sans-serif; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
@@ -135,6 +141,7 @@ function chart(samples) {
 }
 
 function render(s) {
+  setTheme(s.dark);
   $("profile").textContent = s.profile;
   $("front").textContent = s.frontApp ?? "";
   $("last").textContent = s.lastPress || s.status;

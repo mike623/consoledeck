@@ -86,6 +86,13 @@ mod imp {
     use objc2_app_kit::NSWorkspace;
     use std::ffi::c_void;
 
+    /// System Settings > Appearance is Dark (Auto included: it sets the same key).
+    pub fn dark_mode() -> bool {
+        let style = objc2_foundation::NSUserDefaults::standardUserDefaults()
+            .stringForKey(&objc2_foundation::NSString::from_str("AppleInterfaceStyle"));
+        style.is_some_and(|s| s.to_string() == "Dark")
+    }
+
     pub fn front_app() -> Option<FrontApp> {
         let app = NSWorkspace::sharedWorkspace().frontmostApplication()?;
         let id = app.bundleIdentifier()?.to_string();
@@ -282,6 +289,19 @@ mod imp {
     pub fn next_input_source() {
         request(0x0002, 1); // INPUTLANGCHANGE_FORWARD, HKL_NEXT
     }
+
+    /// Settings > Personalization > Colors: apps in dark mode.
+    pub fn dark_mode() -> bool {
+        use windows::core::w;
+        use windows::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
+        let mut light = 1u32;
+        let mut size = std::mem::size_of::<u32>() as u32;
+        let read = unsafe {
+            RegGetValueW(HKEY_CURRENT_USER, w!(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"), w!("AppsUseLightTheme"),
+                RRF_RT_REG_DWORD, None, Some(&mut light as *mut u32 as *mut _), Some(&mut size as *mut u32))
+        };
+        read.is_ok() && light == 0
+    }
 }
 
 pub use imp::*;
@@ -289,6 +309,13 @@ pub use imp::*;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn dark_mode_matches_system_settings() {
+        let out = Command::new("/usr/bin/defaults").args(["read", "-g", "AppleInterfaceStyle"]).output().unwrap();
+        assert_eq!(dark_mode(), String::from_utf8_lossy(&out.stdout).trim() == "Dark");
+    }
 
     #[test]
     #[cfg(unix)]

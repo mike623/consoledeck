@@ -225,7 +225,9 @@ fn deck_loop(app: AppHandle, rx: Receiver<Event>) {
         let wait = next.map_or(POLL, |t| t.saturating_duration_since(Instant::now()).min(POLL));
         let event = rx.recv_timeout(wait).ok();
         let front = platform::front_app();
+        let dark = platform::dark_mode();
         update(&app, |d| {
+            d.dark = dark;
             match event {
                 Some(Event::Button(pin, down)) => d.button_event(&pin, down, Instant::now()),
                 Some(Event::Status(s)) => {

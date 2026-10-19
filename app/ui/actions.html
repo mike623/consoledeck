@@ -374,10 +374,10 @@ function displayBar() {
           onclick: () => set(displays.filter((_, j) => j !== i)) }, "✕"))),
       el("select", { class: "chip-add", onchange: (e) => e.target.value && set([...displays, JSON.parse(e.target.value)]) },
         el("option", { value: "" }, "Add…"),
-        // one tile per such choice; a plugin whose live only tells the game (contextFor) has no tile otherwise
+        // one tile per such choice; a live that needs a button's choice ({action}: Boosteroid, Last Epoch Scanner) shows on that button, not a tile
         addable.map((p) => tileOptions(p).length
           ? el("optgroup", { label: p.name }, tileOptions(p).map((o) => el("option", { value: JSON.stringify({ type: p.id, value: o.value }) }, o.label)))
-          : !p.contextFor && el("option", { value: JSON.stringify({ type: p.id }) }, p.name))),
+          : !JSON.stringify(p.live).includes("{") && el("option", { value: JSON.stringify({ type: p.id }) }, p.name))),
       profile() && (mine ? el("button", { class: "btn", title: "Show the tiles this falls back to", onclick: () => set(null) }, `Use ${fallbackName()}`)
         : el("span", { class: "muted" }, `(${fallbackName()})`))));
 }

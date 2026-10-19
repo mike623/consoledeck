@@ -48,6 +48,8 @@ pub struct Deck {
     /// Key combo a "repeat" action is auto-pressing (keeps idle-kicking streams like Boosteroid alive).
     pub repeating: Option<String>,
     repeat_at: Option<Instant>,
+    /// The computer is in dark mode: the phone follows it rather than its own setting.
+    pub dark: bool,
     /// Page of buttons in use, from 1; back to 1 when the front app changes.
     pub page: u8,
     held: HashSet<u8>,
@@ -80,6 +82,7 @@ impl Deck {
             calibration_note: String::new(),
             repeating: None,
             repeat_at: None,
+            dark: false,
             page: 1,
             held: HashSet::new(),
             cheat_sheet: false,
