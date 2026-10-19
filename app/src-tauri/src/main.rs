@@ -574,7 +574,14 @@ fn main() {
                 .text("quit", "Quit ConsoleDeck")
                 .build()?;
             TrayIconBuilder::with_id("main")
-                .icon(app.default_window_icon().expect("bundle icon").clone())
+                // the design's mark: a plate of nine keys, the middle one pressed. The Mac menu bar takes a
+                // black template it tints for light and dark; Windows shows the colour seal.
+                .icon(tauri::image::Image::from_bytes(if cfg!(target_os = "macos") {
+                    include_bytes!("../icons/tray-template.png")
+                } else {
+                    include_bytes!("../icons/tray.png")
+                })?)
+                .icon_as_template(cfg!(target_os = "macos"))
                 .tooltip("ConsoleDeck")
                 .menu(&menu)
                 .on_menu_event(|app, e| match e.id().as_ref() {
