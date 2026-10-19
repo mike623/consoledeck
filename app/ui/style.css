@@ -41,6 +41,7 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
 .menu button { display: block; width: 100%; text-align: left; border: 0; background: none; color: inherit; font: inherit; padding: 5px 10px; border-radius: 5px; cursor: pointer; }
 .menu button:hover { background: var(--accent); color: #fff; }
 .menu hr { margin: 4px 0; }
+.menu input { display: block; width: 100%; box-sizing: border-box; }
 .bar > input, .bar > select, .bar > textarea { flex: 1; min-width: 0; width: auto; }
 .field > div { min-width: 0; }
 .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 11px; border-radius: 999px; font-size: 12px; font-weight: 500;

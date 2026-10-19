@@ -175,6 +175,7 @@ let page = 1;
 let profileId;         // undefined until first render; null = Default
 let recording = false;
 let menuOpen = false;
+let gameFor = null, gameName = ""; // app whose game profile is being named in the New profile menu, and the name so far
 /** Select options from plugin commands, by "plugin.field"; refetched on focus (an import may finish in another app). */
 let fetched = {};
 window.addEventListener("focus", () => { fetched = {}; if (S) render(); });
@@ -213,6 +214,7 @@ function setField(i, f, v) {
 
 async function addProfile(app) {
   menuOpen = false;
+  gameFor = null;
   await invoke("add_profile", { id: app.id, name: app.name });
   profileId = app.id;
   render();
@@ -446,6 +448,18 @@ function profilesRail() {
     .sort((a, b) => (parentOf(a[0]) ? cfg().profiles[parentOf(a[0])]?.name + a[1].name : a[1].name)
       .localeCompare(parentOf(b[0]) ? cfg().profiles[parentOf(b[0])]?.name + b[1].name : b[1].name));
   const addable = S.recentApps.filter((a) => !cfg().profiles[a.id]);
+  // apps a plugin tells the game of (Boosteroid), once they have a profile: add a game's before streaming it
+  const gameApps = [...new Set(Object.values(plugins).flatMap((p) => p.contextFor ?? []))].filter((id) => cfg().profiles[id]);
+  const gameInput = () => {
+    const app = cfg().profiles[gameFor];
+    const input = el("input", { type: "text", value: gameName, placeholder: "Game name, as Boosteroid shows it", oninput: () => { gameName = input.value; }, onkeydown: (e) => {
+      const game = input.value.trim();
+      if (e.key === "Enter" && game && !game.includes("/")) addProfile({ id: `${gameFor}/${game}`, name: `${app.name} · ${game}` });
+      if (e.key === "Escape") { gameFor = null; render(); }
+    } });
+    queueMicrotask(() => { input.focus(); input.setSelectionRange(gameName.length, gameName.length); });
+    return input;
+  };
   const pick = (id) => { profileId = id; page = 1; recording = false; menuOpen = false; render(); };
   const count = Math.max(pageCount(cfg(), profile()), page);
   const go = (p) => { page = p; recording = false; render(); };
@@ -457,12 +471,15 @@ function profilesRail() {
           el("div", { class: "badge" }, icon("home")), el("span", { class: "name" }, "Default")),
         entries.map(([id, p]) => el("button", { class: `row-btn${id === profile() ? " on" : ""}${parentOf(id) ? " child" : ""}`, title: id, onclick: () => pick(id) },
           el("div", { class: "badge" }, initials(p.name)), el("span", { class: "name" }, p.name.split(" · ").pop()))),
-        el("button", { class: "row-btn add", title: "Add a profile for an app", onclick: () => { menuOpen = !menuOpen; render(); } },
+        el("button", { class: "row-btn add", title: "Add a profile for an app", onclick: () => { menuOpen = !menuOpen; gameFor = null; render(); } },
           el("div", { class: "badge" }, icon("plus")), "New profile"),
         menuOpen && el("div", { class: "menu", style: "top: 100%" },
           addable.map((a) => el("button", { onclick: () => addProfile(a) }, a.name)),
           addable.length > 0 && el("hr"),
-          el("button", { onclick: async () => { const a = await invoke("pick_app"); if (a) addProfile(a); else { menuOpen = false; render(); } } }, "Choose App…")))),
+          el("button", { onclick: async () => { const a = await invoke("pick_app"); if (a) addProfile(a); else { menuOpen = false; render(); } } }, "Choose App…"),
+          gameApps.length > 0 && el("hr"),
+          gameApps.map((id) => gameFor === id ? gameInput()
+            : el("button", { title: "Add a game's profile before you stream it", onclick: () => { gameFor = id; gameName = ""; render(); } }, `${cfg().profiles[id].name} Game…`))))),
     el("div", { class: "pages" },
       el("div", { class: "rail-head label" },
         el("span", {}, `Pages · ${profile() ? cfg().profiles[profile()].name.split(" · ").pop() : "Default"}`),
