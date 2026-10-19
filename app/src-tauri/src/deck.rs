@@ -360,6 +360,9 @@ impl Deck {
 /// One line for the tray and log.
 pub fn describe(action: &Action, plugins: &[Plugin]) -> String {
     let value = action.value.as_deref().unwrap_or("");
+    if let Some(n) = action.name().filter(|_| action.kind != "none") {
+        return n.into();
+    }
     match (action.kind.as_str(), value) {
         ("none", _) => "no action".into(),
         ("repeat", _) => format!("repeat {value}"),
@@ -581,5 +584,8 @@ mod tests {
         assert_eq!(describe(&Action::new("password", "xyz"), &plugins), "Type Password");
         assert_eq!(describe(&Action::new("url", "x.com"), &plugins), "url x.com (plugin not installed)");
         assert_eq!(describe(&Action::none(), &plugins), "no action");
+        let mut named = Action::new("system", "nextpage");
+        named.values.insert("name".into(), "More".into());
+        assert_eq!(describe(&named, &plugins), "More");
     }
 }

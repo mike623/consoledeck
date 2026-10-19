@@ -130,12 +130,12 @@ function showValue(field, v) {
 function shortLabel(a) {
   const v = a.value ?? "";
   const p = pluginFor(a.type);
+  if (a.type !== "none" && a.values?.name?.trim()) return a.values.name.trim(); // a name the user gave wins over every other label
   if (p && !p.fields.length) return p.label ?? p.name; // nothing to fill in, e.g. CPU Usage
   if (a.type === "none" || !v) return "–";
   if (a.type === "repeat") return "⟳ " + comboSymbols(v);
   if (!p) return `⚠ ${a.type}`; // its plugin was removed
   const values = actionValues(p, a);
-  if (values.name?.trim()) return values.name.trim(); // a "name" field (Run Script) wins over every other label
   const shown = (id) => showValue(p.fields.find((f) => f.id === id), values[id] ?? "");
   return p.label ? p.label.replace(/\{([\w-]+)\}/g, (_, id) => shown(id)) : shown(p.fields[0]?.id);
 }

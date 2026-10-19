@@ -307,6 +307,16 @@ function fieldEditor(p, f, i) {
   return field(f.label, control);
 }
 
+/** Any action can be renamed: the name shows on the deck, phone and cheat sheet instead of its value. */
+function nameEditor(kind) {
+  if (["none", "inherit"].includes(kind) || pluginFor(kind)?.fields.some((f) => f.id === "name")) return null; // Run Script has its own
+  const a = own(selected);
+  return field("Name", textInput(a.values?.name ?? "", (v) => {
+    const { name, ...values } = a.values ?? {};
+    setOwn({ ...a, values: v.trim() ? { ...values, name: v } : values });
+  }, { placeholder: "Optional: shown instead of the action" }));
+}
+
 function valueEditor(kind) {
   const value = own(selected)?.value ?? "";
   if (kind === "none") return null;
@@ -560,6 +570,7 @@ function inspector() {
           profile() && el("option", { value: "inherit", selected: kind === "inherit" }, `Use ${fallbackName()}`),
           kinds(kind).map(([k, label]) => el("option", { value: k, selected: k === kind }, label)))),
       ...[valueEditor(kind)].flat().filter(Boolean),
+      nameEditor(kind),
       !calibrated && el("div", { class: "warn warn-line" }, "⚠ Not calibrated yet"),
       gesture !== "press" && note("Buttons with long or double actions wait a moment to tell presses apart.")),
     el("div", { class: "ins-foot" },
