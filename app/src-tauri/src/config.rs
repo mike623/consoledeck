@@ -324,12 +324,12 @@ mod tests {
     #[test]
     fn game_profile_tiles_add_to_app_tiles() {
         let json = r#"{"displays":[{"type":"cpu"}],
-            "profiles":{"com.boosteroid.macclient":{"name":"Boosteroid","buttons":{},"displays":[{"type":"boosteroid-idle"}]},
+            "profiles":{"com.boosteroid.macclient":{"name":"Boosteroid","buttons":{},"displays":[{"type":"boosteroid"}]},
             "com.boosteroid.macclient/Last Epoch":{"name":"Last Epoch","buttons":{},"displays":[{"type":"le-scanner"}]}}}"#;
         let c = Config::parse(json).unwrap();
         let kinds = |app| c.displays(Some(app)).into_iter().map(|a| a.kind).collect::<Vec<_>>();
-        assert_eq!(kinds("com.boosteroid.macclient/Last Epoch"), ["boosteroid-idle", "le-scanner"]);
-        assert_eq!(kinds("com.boosteroid.macclient/Satisfactory"), ["boosteroid-idle"]);
+        assert_eq!(kinds("com.boosteroid.macclient/Last Epoch"), ["boosteroid", "le-scanner"]);
+        assert_eq!(kinds("com.boosteroid.macclient/Satisfactory"), ["boosteroid"]);
         assert_eq!(kinds("com.apple.Safari"), ["cpu"]);
     }
 

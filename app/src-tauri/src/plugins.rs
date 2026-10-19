@@ -460,6 +460,16 @@ fn read_tree(base: &Path, dir: &Path, files: &mut BTreeMap<String, Vec<u8>>) -> 
 #[cfg(test)]
 mod tests {
     #[test]
+    fn boosteroid_live_tells_the_game_or_shows_a_tile() {
+        let m = Manifest::parse(include_str!("../../plugins/plugins/boosteroid/plugin.json")).unwrap();
+        let args = |v: Option<&str>| m.live(&Action { kind: "boosteroid".into(), value: v.map(Into::into), values: BTreeMap::new() }).unwrap();
+        assert_eq!(args(None).last().unwrap(), ""); // the context command, no tile
+        assert_eq!(args(Some("idle")).last().unwrap(), "idle");
+        assert!(matches!(m.step(&Action::new("boosteroid", "end")), Some(Step::Exec(_))));
+        assert_eq!(m.step(&Action::new("boosteroid", "idle")), None);
+    }
+
+    #[test]
     fn live_plugins_need_no_run_and_only_exec() {
         let m = Manifest::parse(r#"{"id": "cpu", "name": "CPU", "version": "1.0.0",
             "live": {"mac": {"exec": ["./cpu.sh"]}, "windows": {"exec": ["powershell"]}}}"#).unwrap();

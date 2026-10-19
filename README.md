@@ -12,7 +12,7 @@ Turn a [Console Deck V2](https://makerworld.com/en/models/1717141-console-deck-v
 
 - **Tray app for macOS and Windows** (Rust + [Tauri](https://tauri.app)), no Python or service needed at runtime.
 - **Wire it however you like**: a calibration window maps whatever pins your buttons use to the 3-3-4 layout.
-- **Per-app profiles**: buttons change with the app in front, and fall back to the default profile. Inside a streaming app they can change per game: with the **Boosteroid Game** plugin, *Boosteroid · Last Epoch* falls back to *Boosteroid*, then Default. The plugin also taps Shift when Boosteroid warns of inactivity, so an idle stream isn't ended.
+- **Per-app profiles**: buttons change with the app in front, and fall back to the default profile. Inside a streaming app they can change per game: with the **Boosteroid** plugin, *Boosteroid · Last Epoch* falls back to *Boosteroid*, then Default. The plugin also taps Shift when Boosteroid warns of inactivity, so an idle stream isn't ended, and has an idle countdown tile and an End Session button.
 - **Gestures**: press, long press and double press on every button.
 - **Pages**: more buttons than the deck has. Give a button **Next Page** or **Previous Page** (System) and add pages with **+** in Edit Actions.
 - **Many action types**: open a URL or app, run a shell script, press a key combo, type text, switch input language, lock, sleep, volume and more.

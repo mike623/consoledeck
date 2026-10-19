@@ -174,7 +174,7 @@ function kinds(current) {
 }
 
 /** Plugins that only show something (CPU Usage): they go on the phone's display row, not on a button. */
-const displayOnly = (p) => p.live && !p.run;
+const displayOnly = (p) => p.live && !p.run && !p.fields[0]?.options?.some((o) => o.run);
 
 /** "Last Epoch Character: Fire Res", "CPU Usage". */
 function tileName(a) {
@@ -191,7 +191,9 @@ function displayBar() {
   const inherited = cfg().profiles[parentOf(profile())]?.displays;
   const displays = mine ?? (inherited ? [] : cfg().displays ?? []);
   const set = (list) => invoke("set_displays", { profile: profile(), displays: list });
-  const addable = Object.values(plugins).filter((p) => p.live && !p.contextFor).sort((a, b) => a.name.localeCompare(b.name));
+  const addable = Object.values(plugins).filter((p) => p.live).sort((a, b) => a.name.localeCompare(b.name));
+  // choices a press can't run are tiles (Last Epoch Character's stats, Boosteroid's idle countdown)
+  const tileOptions = (p) => p.run ? [] : p.fields[0]?.options?.filter((o) => !o.run) ?? [];
   return field("Phone shows",
     el("div", { class: "bar", style: "flex-wrap: wrap" },
       (inherited ?? []).map((a) => el("span", { class: "muted", title: `From ${fallbackName()}` }, tileName(a))),
@@ -199,10 +201,10 @@ function displayBar() {
         onclick: () => set(displays.filter((_, j) => j !== i)) }, `${tileName(a)} ✕`)),
       el("select", { onchange: (e) => e.target.value && set([...displays, JSON.parse(e.target.value)]) },
         el("option", { value: "" }, "Add…"),
-        // a tile-only plugin with choices (Last Epoch Character's stats) is one tile per choice
-        addable.map((p) => displayOnly(p) && p.fields[0]?.options?.length
-          ? el("optgroup", { label: p.name }, p.fields[0].options.map((o) => el("option", { value: JSON.stringify({ type: p.id, value: o.value }) }, o.label)))
-          : el("option", { value: JSON.stringify({ type: p.id }) }, p.name))),
+        // one tile per such choice; a plugin whose live only tells the game (contextFor) has no tile otherwise
+        addable.map((p) => tileOptions(p).length
+          ? el("optgroup", { label: p.name }, tileOptions(p).map((o) => el("option", { value: JSON.stringify({ type: p.id, value: o.value }) }, o.label)))
+          : !p.contextFor && el("option", { value: JSON.stringify({ type: p.id }) }, p.name))),
       profile() && (mine ? el("button", { class: "btn", title: "Show the tiles this falls back to", onclick: () => set(null) }, `Use ${fallbackName()}`)
         : el("span", { class: "muted" }, `(${fallbackName()})`))));
 }
