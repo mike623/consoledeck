@@ -382,7 +382,7 @@ function displayBar() {
         // one tile per such choice; a live that needs a button's choice ({action}: Boosteroid, Last Epoch Scanner) shows on that button, not a tile
         addable.map((p) => tileOptions(p).length
           ? el("optgroup", { label: p.name }, tileOptions(p).map((o) => el("option", { value: JSON.stringify({ type: p.id, value: o.value }) }, o.label)))
-          : !JSON.stringify(p.live).includes("{") && el("option", { value: JSON.stringify({ type: p.id }) }, p.name))),
+          : !/\{\w+\}/.test(JSON.stringify(p.live)) && el("option", { value: JSON.stringify({ type: p.id }) }, p.name))),
       profile() && (mine ? el("button", { class: "btn", title: "Show the tiles this falls back to", onclick: () => set(null) }, `Use ${fallbackName()}`)
         : el("span", { class: "muted" }, `(${fallbackName()})`))));
 }
