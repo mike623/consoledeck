@@ -82,14 +82,10 @@
   .rail .menu { left: 8px; right: 8px; min-width: 0; }
 
   /* center canvas */
-  .canvas { flex: 1; min-width: 0; padding: 64px 24px 0; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
+  .canvas { flex: 1; min-width: 0; padding: 64px 24px 0; display: flex; flex-direction: column; align-items: center; overflow-y: auto; }
   .device { flex: 1; justify-content: center; padding-bottom: 18px; }
   .tray { align-self: stretch; margin: 0 -24px; padding: 12px 18px 14px; border-top: 0.5px solid var(--border); border-radius: 0 0 18px 18px;
     background: color-mix(in srgb, var(--bg) 70%, transparent); display: flex; flex-direction: column; gap: 6px; }
-  .tray .field { flex-direction: row; align-items: center; gap: 10px; }
-  .tray .field > label { flex: none; }
-  .tray .field > div { flex: 1; }
-  .tray select.chip-add { flex: 0 1 170px; min-width: 90px; }
   .corner { position: absolute; top: 16px; }
   .corner.left { left: 16px; } .corner.right { right: 16px; }
   .seg { display: inline-flex; padding: 3px; border: 0.5px solid var(--border); border-radius: 9px; }
@@ -155,8 +151,40 @@
   @media (max-width: 520px) {
     .corner.right { top: 52px; left: 16px; right: auto; }
     .canvas { padding-top: 96px; }
-    .tray .field { flex-direction: column; align-items: stretch; }
   }
+  /* phone tiles, drawn like the phone's: label, source, own ones with move/remove; then an Add tile card and its picker */
+  .tiles { display: flex; flex-direction: column; gap: 10px; }
+  .tiles-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .tiles-head h3 { margin: 0 0 2px; font-size: 14px; }
+  .tiles-head .grow { flex: 1; min-width: 200px; }
+  .tile-row { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+  .tile { height: 64px; box-sizing: border-box; padding: 8px 6px 8px 10px; border-radius: 12px; display: flex; flex-direction: column; justify-content: space-between;
+    background: var(--key); border: 1px solid var(--line); box-shadow: 0 1px 3px rgba(33,31,27,0.10); min-width: 0; }
+  .tile.inherited { background: transparent; border-style: dashed; box-shadow: none; color: var(--muted); }
+  .tile-top { display: flex; align-items: center; gap: 2px; min-width: 0; }
+  .tile-top > span:first-child { flex: 1; min-width: 0; font-weight: 700; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tile small { font-size: 10.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tile-btns { display: flex; }
+  .tile-btns button { all: unset; cursor: pointer; width: 20px; height: 22px; border-radius: 6px; text-align: center; color: var(--muted); font-size: 13px; }
+  .tile-btns button:hover:not(:disabled) { background: var(--hover); color: var(--fg); }
+  .tile-btns button:disabled { opacity: .3; cursor: default; }
+  .tile-btns button:focus-visible, .picker button:focus-visible, .tile-add:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .tile-add { all: unset; box-sizing: border-box; cursor: pointer; width: 100%; height: 64px; border-radius: 12px; border: 1.5px dashed var(--border-strong);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--muted); font-weight: 500; }
+  .tile-add.on { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+  .tile-add b { font-size: 18px; line-height: 1; }
+  .tiles-note { padding: 8px 10px; border-radius: 10px; border: 1px dashed var(--line); font-size: 12px; }
+  .picker { border-radius: 12px; background: var(--field); border: 0.5px solid var(--border-strong); box-shadow: 0 6px 24px rgba(33,31,27,0.10);
+    padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; max-height: 220px; overflow-y: auto; }
+  .picker-group { display: flex; flex-direction: column; gap: 5px; }
+  .picker-group > label { font-size: 9.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); }
+  .picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; }
+  .picker-grid button { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 5px 10px; border-radius: 9px; border: 0.5px solid var(--line);
+    background: var(--key); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+  .picker-grid button:hover:not(:disabled) { border-color: var(--accent); }
+  .picker-grid button:disabled { background: transparent; cursor: default; opacity: .7; }
+  .picker-grid span { flex: 1; min-width: 0; }
+  .picker-grid b { font-size: 11px; color: var(--accent); } .picker-grid b.added { color: var(--matcha); }
   .warn-line { font-size: 11px; }
 </style></head>
 <body><div id="root"></div>
@@ -360,31 +388,62 @@ function tileName(a) {
   return o ? `${p.name}: ${o.label}` : p.name;
 }
 
-/** Tiles under the buttons on the phone companion. A profile uses the default ones until it changes them;
- * a game's profile adds its own to its app's (Boosteroid · Last Epoch shows Boosteroid's too). */
+/** "Fire Res", "CPU": what the phone's tile says above its value. */
+function tileLabel(a) {
+  const p = pluginFor(a.type);
+  if (!p) return a.type;
+  return p.fields[0]?.options?.find((o) => o.value === a.value)?.label ?? p.label ?? p.name;
+}
+
+let pickingTiles = false; // the Add tile picker stays open across re-renders
+
+/** Tiles under the buttons on the phone companion, drawn like the phone draws them. A profile uses the default
+ * ones until it gets its own; a game's profile adds its own after its app's (Boosteroid · Last Epoch shows Boosteroid's too). */
 function displayBar() {
   const mine = profile() ? cfg().profiles[profile()].displays : cfg().displays ?? [];
   const inherited = cfg().profiles[parentOf(profile())]?.displays;
   const displays = mine ?? (inherited ? [] : cfg().displays ?? []);
+  const own = !profile() || !!mine;
   const set = (list) => invoke("set_displays", { profile: profile(), displays: list });
-  const addable = Object.values(plugins).filter((p) => p.live).sort((a, b) => a.name.localeCompare(b.name));
-  // choices a press can't run are tiles (Last Epoch Character's stats)
+  // the app's tiles always show first in a game; the fallback's show instead of this profile's until it has its own
+  const shared = own ? inherited ?? [] : inherited ?? cfg().displays ?? [];
+  const tile = (a, actions) => el("li", { class: `tile${actions ? "" : " inherited"}`, title: actions ? tileName(a) : `${tileName(a)}, from ${fallbackName()}` },
+    el("div", { class: "tile-top" }, el("span", {}, tileLabel(a)), actions),
+    el("small", {}, pluginFor(a.type)?.name ?? "Not installed"));
+  const move = (i, j) => { const t = displays.slice(); [t[i], t[j]] = [t[j], t[i]]; set(t); };
+  const mini = (label, text, disabled, onclick) => el("button", { "aria-label": label, title: label, disabled, onclick }, text);
+
+  // one tile per choice a press can't run (Last Epoch Character's stats); a live that needs a button's choice
+  // ({action}: Boosteroid, Last Epoch Scanner) shows on that button, not a tile
   const tileOptions = (p) => p.run ? [] : p.fields[0]?.options?.filter((o) => !o.run) ?? [];
-  return field("Phone shows",
-    el("div", { class: "bar", style: "flex-wrap: wrap" },
-      // inherited tiles are dashed and muted, like the phone draws keys from a fallback profile
-      (inherited ?? []).map((a) => el("span", { class: "chip inherited", title: `From ${fallbackName()}` }, tileName(a))),
-      displays.map((a, i) => el("span", { class: "chip" }, tileName(a),
-        el("button", { title: "Remove from the phone", "aria-label": `Remove ${tileName(a)}`,
-          onclick: () => set(displays.filter((_, j) => j !== i)) }, "✕"))),
-      el("select", { class: "chip-add", onchange: (e) => e.target.value && set([...displays, JSON.parse(e.target.value)]) },
-        el("option", { value: "" }, "Add…"),
-        // one tile per such choice; a live that needs a button's choice ({action}: Boosteroid, Last Epoch Scanner) shows on that button, not a tile
-        addable.map((p) => tileOptions(p).length
-          ? el("optgroup", { label: p.name }, tileOptions(p).map((o) => el("option", { value: JSON.stringify({ type: p.id, value: o.value }) }, o.label)))
-          : !/\{\w+\}/.test(JSON.stringify(p.live)) && el("option", { value: JSON.stringify({ type: p.id }) }, p.name))),
-      profile() && (mine ? el("button", { class: "btn", title: "Show the tiles this falls back to", onclick: () => set(null) }, `Use ${fallbackName()}`)
-        : el("span", { class: "muted" }, `(${fallbackName()})`))));
+  const live = Object.values(plugins).filter((p) => p.live).sort((a, b) => a.name.localeCompare(b.name));
+  const plain = live.filter((p) => !tileOptions(p).length && !/\{\w+\}/.test(JSON.stringify(p.live)));
+  const groups = [["System", plain.map((p) => [p.name, { type: p.id }])],
+    ...live.filter((p) => tileOptions(p).length).map((p) => [p.name, tileOptions(p).map((o) => [o.label, { type: p.id, value: o.value }])])];
+  const has = (a) => displays.some((d) => d.type === a.type && (d.value ?? "") === (a.value ?? ""));
+  const picker = el("div", { class: "picker", id: "tile-picker" }, groups.filter(([, items]) => items.length).map(([name, items]) =>
+    el("div", { class: "picker-group" }, el("label", {}, name), el("div", { class: "picker-grid" }, items.map(([label, a]) => has(a)
+      ? el("button", { disabled: true, "aria-label": `${label}, already on the phone` }, el("span", {}, label), el("b", { class: "added" }, "Added"))
+      : el("button", { "aria-label": `Add ${label}`, onclick: () => set([...displays, a]) }, el("span", {}, label), el("b", {}, "Add")))))),
+    el("small", { class: "muted" }, "More tiles come from plugins: Plugins… in the tray menu."));
+
+  return el("section", { class: "tiles", "aria-label": "Phone tiles" },
+    el("div", { class: "tiles-head" },
+      el("div", { class: "grow" }, el("h3", {}, "Phone tiles"),
+        el("small", { class: "muted" }, "Live readouts under the buttons on the Phone Companion. They don't use a button.")),
+      profile() && el("div", { class: "seg", role: "radiogroup", "aria-label": "Tiles for this profile" },
+        el("button", { role: "radio", "aria-checked": `${!own}`, class: own ? "" : "on", onclick: () => own && set(null) }, `Same as ${fallbackName()}`),
+        el("button", { role: "radio", "aria-checked": `${own}`, class: own ? "on" : "", onclick: () => !own && set(displays) }, inherited ? "Add my own" : "Own tiles"))),
+    el("ul", { class: "tile-row", "aria-label": "Tiles, in phone order" },
+      shared.map((a) => tile(a)),
+      own && displays.map((a, i) => tile(a, el("span", { class: "tile-btns" },
+        mini(`Move ${tileName(a)} left`, "‹", i === 0, () => move(i, i - 1)),
+        mini(`Move ${tileName(a)} right`, "›", i === displays.length - 1, () => move(i, i + 1)),
+        mini(`Remove ${tileName(a)}`, "✕", false, () => set(displays.filter((_, j) => j !== i)))))),
+      own && el("li", {}, el("button", { class: `tile-add${pickingTiles ? " on" : ""}`, "aria-expanded": `${pickingTiles}`, "aria-controls": "tile-picker",
+        onclick: () => { pickingTiles = !pickingTiles; render(); } }, el("b", { "aria-hidden": "true" }, pickingTiles ? "✓" : "+"), pickingTiles ? "Done" : "Add tile"))),
+    !own && el("div", { class: "muted tiles-note" }, `Showing ${fallbackName()}'s tiles. Change them there, or pick ${inherited ? "Add my own" : "Own tiles"} to start from a copy.`),
+    own && pickingTiles && picker);
 }
 
 /** Lucide icons (ISC, lucide.dev): the design's 24-grid, round-capped outline set. */
@@ -564,7 +623,7 @@ function canvas() {
         el("span", { class: "sep" }, "·"), el("span", {}, "3-3-4"),
         el("span", { class: "sep" }, "·"), el("span", {}, `${set} of 10 set`))),
     // not in the design: the phone's live tiles belong to the profile, so they sit under its deck like the phone's docked strip
-    el("div", { class: "tray" }, displayBar(), note("Live tiles under the buttons on the Phone Companion. They don't use a button.")));
+    el("div", { class: "tray" }, displayBar()));
 }
 
 function inspector() {
