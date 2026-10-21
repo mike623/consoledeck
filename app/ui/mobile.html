@@ -65,6 +65,9 @@
   .key small { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .key.empty span { color: var(--muted); font-weight: 400; opacity: .5; }
   .key.shows span { font-variant-numeric: tabular-nums; font-weight: 700; }
+  /* AFK running: a vermilion card, so on and off differ at a glance */
+  .key.on { background: color-mix(in srgb, var(--accent) 18%, var(--key)); border-color: var(--accent); }
+  .key.on span { color: var(--accent); }
 
   /* live tiles: a tray docked under the buttons, lighter than them (the design's strip) */
   .displays { flex: 0 0 18%; padding: 8px; margin: 0 calc(-1 * clamp(0.7rem, 3.4vw, 1.2rem)); padding-inline: clamp(0.7rem, 3.4vw, 1.2rem);
@@ -164,11 +167,16 @@ function render(s) {
     const r = el("div", "row");
     r.append(...row.map((n) => {
       const k = keys[n];
-      const c = el("div", `key${k.own ? " own" : ""}${k.press ? "" : " empty"}${k.live ? " shows" : ""}${s.held.includes(n) ? " down" : ""}`);
+      const c = el("div", `key${k.own ? " own" : ""}${k.press ? "" : " empty"}${k.live ? " shows" : ""}${k.live?.startsWith("AFK on") ? " on" : ""}${s.held.includes(n) ? " down" : ""}`);
       // a live press action shows its line (Boosteroid's AFK countdown), its label goes small
       c.append(el("b", null, n), el("span", null, k.live?.split("\t")[0] || k.press || "–"));
-      const extra = [k.live && k.press, k.long && "Long: " + k.long, k.double && "Double: " + k.double].filter(Boolean).join(" · ");
-      if (extra) c.append(el("small", null, extra));
+      // Morse-style marks keep the line short: ━ long press, •• double press
+      const extra = [k.live && k.press, k.long && "━ " + k.long, k.double && "•• " + k.double].filter(Boolean).join(" · ");
+      if (extra) {
+        const x = el("small", null, extra);
+        x.title = [k.long && "Long press: " + k.long, k.double && "Double press: " + k.double].filter(Boolean).join(", ");
+        c.append(x);
+      }
       return c;
     }));
     return r;

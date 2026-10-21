@@ -117,10 +117,10 @@ pub fn live_commands(d: &Deck) -> Vec<(Vec<String>, std::path::PathBuf)> {
 }
 
 /// Latest line of an action's live command, cut to fit; None without one or before its first line.
-/// A repeat button that's running shows "AFK · every 30s".
+/// A repeat button that's running shows "AFK on · every 30s".
 fn live_line(d: &Deck, a: &Action) -> Option<String> {
     if a.kind == "repeat" {
-        return (d.repeating.is_some() && d.repeating == a.value).then(|| format!("AFK · every {}", d.repeat_label()));
+        return (d.repeating.is_some() && d.repeating == a.value).then(|| format!("AFK on · every {}", d.repeat_label()));
     }
     let key = plugins::find(&d.plugins, &a.kind)?.manifest.live(a)?;
     d.live.get(&key).map(|l| crate::live::clip(l))
