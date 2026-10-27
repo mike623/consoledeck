@@ -60,8 +60,8 @@ fn update<R>(app: &AppHandle, f: impl FnOnce(&mut Deck) -> R) -> R {
         let effects = deck.take_effects();
         let plugins = if effects.iter().any(|e| matches!(e, Effect::Run(_))) { deck.plugins.clone() } else { vec![] };
         shared.companion.send(&deck);
-        // live commands run only while a phone can show them
-        let mut wanted = if shared.companion.enabled() { mobile::live_commands(&deck) } else { vec![] };
+        // live commands run only while a phone or Kindle can show them
+        let mut wanted = if shared.companion.enabled() || shared.companion.pushing() { mobile::live_commands(&deck) } else { vec![] };
         wanted.extend(deck.context_command()); // which game is on picks the profile, phone or not
         (r, effects, deck.view(), plugins, wanted)
     };

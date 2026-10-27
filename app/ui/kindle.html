@@ -1,0 +1,17 @@
+{{! ConsoleDeck: the deck's buttons and live tiles, pushed by the ConsoleDeck app. Uses clock + consoledeck. }}
+{{#consoledeck}}
+<div class="head">
+  <div class="time">{{clock.time}}</div>
+  <div class="profile">{{profile}}</div>
+  {{#frontApp}}<div class="app">{{frontApp}}</div>{{/frontApp}}
+</div>
+{{#rows}}
+<table class="row"><tr>{{#keys}}<td class="{{#live}}live{{/live}}">{{label}}</td>{{/keys}}</tr></table>
+{{/rows}}
+<table class="tiles">
+  {{#displays}}<tr><td class="label">{{label}}</td><td class="value">{{live}}{{^live}}&hellip;{{/live}}</td></tr>{{/displays}}
+</table>
+{{/consoledeck}}
+{{^consoledeck}}
+<div class="wait">Waiting for ConsoleDeck&hellip;<br><small>ConsoleDeck: Phone Companion menu</small></div>
+{{/consoledeck}}

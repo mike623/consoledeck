@@ -31,11 +31,16 @@ pub struct Settings {
     pub enabled: bool,
     pub token: String,
     pub port: u16, // fixed so the phone's home screen URL stays valid; edit the file if it's taken
+    /// inkdash's API token (its settings page → API access) for `inkdash_name`; empty = no Kindle.
+    pub inkdash_token: String,
+    pub inkdash_name: String, // the data shows up as {{<name>.…}}, the theme is called <name>
+    pub inkdash_url: String, // empty = inkdash on this Mac
+    pub inkdash_theme: String, // version of the theme last uploaded; a new one is also switched to
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { enabled: false, token: new_token(), port: 47800 }
+        Settings { enabled: false, token: new_token(), port: 47800, inkdash_token: String::new(), inkdash_name: "consoledeck".into(), inkdash_url: String::new(), inkdash_theme: String::new() }
     }
 }
 
@@ -201,6 +206,58 @@ fn short(a: &Action, plugins: &[Plugin]) -> String {
     }
 }
 
+/// What the Kindle shows, as {{consoledeck.…}} in the inkdash theme: the phone's view, minus what changes
+/// on every press (held keys, last press) since each change redraws e-ink. Keys in 3-3-4 rows: themes have no logic.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct KindleView {
+    profile: String,
+    front_app: Option<String>,
+    rows: Vec<KindleRow>,
+    displays: Vec<DisplayView>,
+}
+
+#[derive(Serialize)]
+struct KindleRow {
+    keys: Vec<KindleKey>,
+}
+
+#[derive(Serialize)]
+struct KindleKey {
+    label: String,
+    live: bool,
+}
+
+fn kindle_view(v: MobileView) -> KindleView {
+    // "26%\t0.26": the phone draws a bar from the part after the tab, the Kindle shows only the text
+    let text = |l: String| l.split('\t').next().unwrap_or("").to_string();
+    let mut keys = v.keys.into_iter().map(|k| KindleKey { live: k.live.is_some(), label: k.live.map(text).unwrap_or(k.press) });
+    let rows = [3, 3, 4].iter().map(|&n| KindleRow { keys: keys.by_ref().take(n).collect() }).collect();
+    let displays = v.displays.into_iter().map(|d| DisplayView { label: d.label, live: d.live.map(text) }).collect();
+    KindleView { profile: v.profile, front_app: v.front_app, rows, displays }
+}
+
+const KINDLE_HTML: &str = include_str!("../../ui/kindle.html");
+const KINDLE_CSS: &str = include_str!("../../ui/kindle.css");
+
+/// One request to inkdash's API ("PUT /inkdash/theme/consoledeck"), returns the status line.
+/// Plain std HTTP, like the phone server.
+fn inkdash(url: &str, token: &str, method_path: &str, json: &str) -> std::io::Result<String> {
+    let url = if url.is_empty() { "127.0.0.1:47291" } else { url };
+    let host = url.trim_start_matches("http://").split('/').next().unwrap_or("");
+    let addr = std::net::ToSocketAddrs::to_socket_addrs(host)?.next().ok_or(std::io::ErrorKind::NotFound)?;
+    let mut s = TcpStream::connect_timeout(&addr, Duration::from_secs(3))?;
+    s.set_read_timeout(Some(Duration::from_secs(5)))?;
+    let req = format!(
+        "{method_path} HTTP/1.1\r\nHost: {host}\r\nAuthorization: Bearer {token}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{json}",
+        json.len()
+    );
+    s.write_all(req.as_bytes())?;
+    let mut status = String::new();
+    BufReader::new(s).read_line(&mut status)?;
+    Ok(status.trim().to_string())
+}
+
 enum Msg {
     Client(TcpStream),
     State(String),
@@ -213,6 +270,7 @@ pub struct Companion {
     on: Arc<AtomicBool>,
     started: Mutex<bool>,
     tx: Sender<Msg>,
+    kindle: Sender<String>,
 }
 
 impl Companion {
@@ -249,7 +307,55 @@ impl Companion {
                 }
             }
         });
-        let c = Companion { on: Arc::new(AtomicBool::new(settings.enabled)), settings: Arc::new(Mutex::new(settings)), started: Mutex::new(false), tx };
+        let settings = Arc::new(Mutex::new(settings));
+        // Kindle pusher: newest state only, at most every 5 s (e-ink redraws are slow and flicker).
+        // Uploads the theme first, once per launch, so an update brings its new look.
+        let (kindle, krx) = channel::<String>();
+        let ks = settings.clone();
+        std::thread::spawn(move || {
+            let ok = |r: &std::io::Result<String>| matches!(r, Ok(s) if s.split(' ').nth(1).is_some_and(|c| c.starts_with('2')));
+            let theme = {
+                use std::hash::{DefaultHasher, Hash, Hasher};
+                let mut h = DefaultHasher::new();
+                (KINDLE_HTML, KINDLE_CSS).hash(&mut h);
+                format!("{:x}", h.finish())
+            };
+            let (mut last, mut theme_sent) = (String::new(), false);
+            while let Ok(mut json) = krx.recv() {
+                while let Ok(newer) = krx.try_recv() {
+                    json = newer;
+                }
+                if json == last {
+                    continue;
+                }
+                let (url, token, name, shown) = {
+                    let s = ks.lock().unwrap();
+                    (s.inkdash_url.clone(), s.inkdash_token.clone(), s.inkdash_name.clone(), s.inkdash_theme.clone())
+                };
+                if !theme_sent {
+                    // switch to it only when it's new, so a theme picked on inkdash's settings page stays
+                    let body = serde_json::json!({ "template": KINDLE_HTML.replace("consoledeck}}", &format!("{name}}}}}")), "css": KINDLE_CSS, "activate": shown != theme });
+                    let r = inkdash(&url, &token, &format!("PUT /inkdash/theme/{name}"), &body.to_string());
+                    if ok(&r) {
+                        theme_sent = true;
+                        let mut s = ks.lock().unwrap();
+                        s.inkdash_theme = theme.clone();
+                        s.save();
+                    } else {
+                        log::warn!("inkdash theme upload to {url}: {r:?}");
+                    }
+                }
+                let r = inkdash(&url, &token, &format!("POST /inkdash/push/{name}"), &json);
+                if ok(&r) {
+                    last = json;
+                } else {
+                    log::warn!("inkdash push to {url}: {r:?}");
+                }
+                std::thread::sleep(Duration::from_secs(5));
+            }
+        });
+        let on = settings.lock().unwrap().enabled;
+        let c = Companion { on: Arc::new(AtomicBool::new(on)), settings, started: Mutex::new(false), tx, kindle };
         if c.on.load(Ordering::Relaxed) {
             c.start();
         }
@@ -260,9 +366,17 @@ impl Companion {
         self.on.load(Ordering::Relaxed)
     }
 
+    /// A Kindle is set up: companion.json has inkdash's token.
+    pub fn pushing(&self) -> bool {
+        !self.settings.lock().unwrap().inkdash_token.is_empty()
+    }
+
     pub fn send(&self, d: &Deck) {
         if self.enabled() {
             let _ = self.tx.send(Msg::State(serde_json::to_string(&view(d)).unwrap_or_default()));
+        }
+        if self.pushing() {
+            let _ = self.kindle.send(serde_json::to_string(&kindle_view(view(d))).unwrap_or_default());
         }
     }
 
@@ -441,6 +555,22 @@ mod tests {
         assert_eq!(short(&named, &d.plugins), "uv run --project ~/le-tool le-scanner ov"); // cut at 40
         named.values.insert("name".into(), " Scanner ".into());
         assert_eq!(short(&named, &d.plugins), "Scanner");
+    }
+
+    #[test]
+    fn kindle_rows_are_3_3_4() {
+        let json = r#"{"buttons":{"1":{"type":"app","value":"Spotify"}},"pins":{"D2":1}}"#;
+        let mut d = Deck::new(0, move || Config::parse(json), |_| Ok(()));
+        d.plugins = crate::plugins::load(std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../plugins/plugins")));
+        let k = kindle_view(view(&d));
+        assert_eq!(k.rows.iter().map(|r| r.keys.len()).collect::<Vec<_>>(), [3, 3, 4]);
+        assert_eq!(k.rows[0].keys[0].label, "Spotify");
+        let out = serde_json::to_string(&k).unwrap();
+        assert!(!out.contains("held") && !out.contains("lastPress"), "{out}");
+        d.config.displays = vec![Action::new("cpu", "")];
+        let key = live_commands(&d)[0].0.clone();
+        d.live.insert(key, "26%\t0.26".into());
+        assert_eq!(kindle_view(view(&d)).displays[0].live.as_deref(), Some("26%"));
     }
 
     #[test]

@@ -1,0 +1,14 @@
+body { font-family: Helvetica, Arial, sans-serif; margin: 0; padding: 40px; }
+.head { border-bottom: 4px solid #000; padding-bottom: 20px; margin-bottom: 30px; }
+.time { float: right; font-size: 56px; font-weight: bold; }
+.profile { font-size: 56px; font-weight: bold; }
+.app { font-size: 30px; margin-top: 6px; }
+.row { width: 100%; border-spacing: 14px; table-layout: fixed; }
+.row td { height: 190px; border: 4px solid #000; border-radius: 16px; text-align: center; vertical-align: middle;
+          font-size: 32px; font-weight: bold; padding: 10px; word-wrap: break-word; }
+.row td.live { background: #000; color: #fff; }
+.tiles { width: 100%; margin-top: 30px; border-top: 4px solid #000; border-collapse: collapse; }
+.tiles td { font-size: 40px; padding: 18px 10px; border-bottom: 2px solid #000; }
+.tiles .value { text-align: right; font-weight: bold; }
+.wait { text-align: center; padding-top: 50%; font-size: 48px; }
+.wait small { font-size: 26px; }
