@@ -308,7 +308,7 @@ impl Companion {
             }
         });
         let settings = Arc::new(Mutex::new(settings));
-        // Kindle pusher: newest state only, at most every 5 s (e-ink redraws are slow and flicker).
+        // Kindle pusher: newest state only, sent as soon as it changes (inkdash batches pushes for 50 ms).
         // Uploads the theme first, once per launch, so an update brings its new look.
         let (kindle, krx) = channel::<String>();
         let ks = settings.clone();
@@ -351,7 +351,6 @@ impl Companion {
                 } else {
                     log::warn!("inkdash push to {url}: {r:?}");
                 }
-                std::thread::sleep(Duration::from_secs(5));
             }
         });
         let on = settings.lock().unwrap().enabled;
